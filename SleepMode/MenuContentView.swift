@@ -29,8 +29,8 @@ struct MenuContentView: View {
                 Text(appState.contextualText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .frame(height: 16, alignment: .leading)
             }
             .padding(.top, 12)
 
@@ -76,7 +76,7 @@ struct MenuContentView: View {
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(modeColor)
                 .contentTransition(.symbolEffect(.replace))
-                .frame(width: 20)
+                .frame(width: 20, height: 20)
 
             Text("SleepMode")
                 .font(.headline)
@@ -88,6 +88,7 @@ struct MenuContentView: View {
                     .controlSize(.small)
             }
         }
+        .frame(height: 20)
     }
 
     private var modeColor: Color {

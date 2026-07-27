@@ -79,12 +79,12 @@ final class AppState: ObservableObject {
         case .stayAwake:
             switch privilegedOperations.closedLidCapability {
             case .systemManaged:
-                "Sleep is prevented and closing the lid locks your session."
+                "Sleep is prevented; closing the lid locks your session."
             case .unavailable:
-                "Idle sleep is prevented. Lid close locks your session; macOS still controls clamshell sleep."
+                "Idle sleep is prevented; macOS still controls lid sleep."
             }
         case .normal:
-            "Standard macOS sleep and lid-close behavior is active."
+            "Standard macOS sleep and lid behavior is active."
         }
     }
 

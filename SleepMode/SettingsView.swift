@@ -4,7 +4,7 @@ struct SettingsView: View {
     @ObservedObject var appState: AppState
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 6) {
             Form {
                 Section {
                     preferenceRow(
@@ -42,14 +42,18 @@ struct SettingsView: View {
             if let statusMessage = appState.statusMessage {
                 statusCallout(statusMessage)
                     .padding(.horizontal, 20)
-                    .padding(.bottom, 16)
             }
+
+            Text("Built by Kryspyy")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .padding(.bottom, 10)
         }
         .frame(width: 420, height: settingsHeight)
     }
 
     private var settingsHeight: CGFloat {
-        appState.statusMessage == nil ? 224 : 276
+        appState.statusMessage == nil ? 228 : 280
     }
 
     private func preferenceRow(
