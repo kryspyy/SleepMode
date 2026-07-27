@@ -5,18 +5,54 @@ final class MockSleepControl: SleepControlling {
     var isPreventingSleep = false
     var preventError: Error?
     var allowError: Error?
+    var automaticallyCompletes = true
     private(set) var preventCallCount = 0
     private(set) var allowCallCount = 0
+    private(set) var restoreCallCount = 0
+    private var pendingChanges: [
+        (Bool, (Result<Bool, Error>) -> Void)
+    ] = []
 
-    func preventSleep() throws {
-        preventCallCount += 1
-        if let preventError { throw preventError }
-        isPreventingSleep = true
+    func setPreventingSleep(
+        _ enabled: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        guard automaticallyCompletes else {
+            pendingChanges.append((enabled, completion))
+            return
+        }
+        complete(enabled, completion: completion)
     }
 
-    func allowSleep() throws {
-        allowCallCount += 1
-        if let allowError { throw allowError }
+    func completeNextChange() {
+        guard !pendingChanges.isEmpty else { return }
+        let (enabled, completion) = pendingChanges.removeFirst()
+        complete(enabled, completion: completion)
+    }
+
+    private func complete(
+        _ enabled: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        if enabled {
+            preventCallCount += 1
+            if let preventError {
+                completion(.failure(preventError))
+                return
+            }
+        } else {
+            allowCallCount += 1
+            if let allowError {
+                completion(.failure(allowError))
+                return
+            }
+        }
+        isPreventingSleep = enabled
+        completion(.success(enabled))
+    }
+
+    func restoreSafeDefaults() {
+        restoreCallCount += 1
         isPreventingSleep = false
     }
 }
@@ -69,29 +105,58 @@ final class MockPowerMonitor: SystemPowerMonitoring {
 
 final class MockScreenLocker: ScreenLocking {
     var error: Error?
+    var displaySleepError: Error?
     private(set) var lockCallCount = 0
+    private(set) var turnDisplayOffCallCount = 0
 
     func lock() throws {
         lockCallCount += 1
         if let error { throw error }
+    }
+
+    func turnDisplayOff() throws {
+        turnDisplayOffCallCount += 1
+        if let displaySleepError { throw displaySleepError }
     }
 }
 
 final class MockWiFiControl: WiFiControlling {
     var isPoweredOn: Bool
     var failWhenSetting: Bool?
+    var automaticallyCompletesPowerState = true
     private(set) var requestedPowerStates: [Bool] = []
+    private var pendingPowerStateCompletions: [
+        (Result<Bool, Error>) -> Void
+    ] = []
 
     init(isPoweredOn: Bool = true) {
         self.isPoweredOn = isPoweredOn
     }
 
-    func setPower(_ poweredOn: Bool) throws {
+    func powerState(completion: @escaping (Result<Bool, Error>) -> Void) {
+        guard automaticallyCompletesPowerState else {
+            pendingPowerStateCompletions.append(completion)
+            return
+        }
+        completion(.success(isPoweredOn))
+    }
+
+    func completeNextPowerState() {
+        guard !pendingPowerStateCompletions.isEmpty else { return }
+        pendingPowerStateCompletions.removeFirst()(.success(isPoweredOn))
+    }
+
+    func setPower(
+        _ poweredOn: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
         requestedPowerStates.append(poweredOn)
         if failWhenSetting == poweredOn {
-            throw SleepModeError.operationFailed("Wi-Fi test failure")
+            completion(.failure(SleepModeError.operationFailed("Wi-Fi test failure")))
+            return
         }
         isPoweredOn = poweredOn
+        completion(.success(poweredOn))
     }
 }
 
@@ -106,18 +171,42 @@ final class MockLoginItem: LoginItemControlling {
     var isEnabled = false
     var error: Error?
 
-    func setEnabled(_ enabled: Bool) throws {
-        if let error { throw error }
+    func setEnabled(
+        _ enabled: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        if let error {
+            completion(.failure(error))
+            return
+        }
         isEnabled = enabled
+        completion(.success(enabled))
     }
 }
 
 final class MockPrivilegedOperations: PrivilegedOperationsServing {
     var closedLidCapability: ClosedLidCapability = .unavailable(reason: "Test")
+    var isSleepDisabled = false
+    var setSleepDisabledError: Error?
+    private(set) var requestedSleepDisabledStates: [Bool] = []
     private(set) var restoreCallCount = 0
+
+    func setSleepDisabled(
+        _ disabled: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        requestedSleepDisabledStates.append(disabled)
+        if let setSleepDisabledError {
+            completion(.failure(setSleepDisabledError))
+            return
+        }
+        isSleepDisabled = disabled
+        completion(.success(disabled))
+    }
 
     func restoreSafeDefaults() {
         restoreCallCount += 1
+        isSleepDisabled = false
     }
 }
 

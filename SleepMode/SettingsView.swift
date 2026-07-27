@@ -4,55 +4,95 @@ struct SettingsView: View {
     @ObservedObject var appState: AppState
 
     var body: some View {
-        Form {
-            Section("General") {
-                Toggle(
-                    "Launch at Login",
-                    isOn: Binding(
-                        get: { appState.launchAtLogin },
-                        set: appState.setLaunchAtLogin
-                    )
-                )
-
-                Toggle(
-                    "Remember selected mode",
-                    isOn: Binding(
-                        get: { appState.rememberSelectedMode },
-                        set: appState.setRememberSelectedMode
-                    )
-                )
-
-                Toggle(
-                    "Turn Wi-Fi off when sleeping",
-                    isOn: Binding(
-                        get: { appState.turnWiFiOffDuringSleep },
-                        set: appState.setWiFiSleepBehavior
-                    )
-                )
-            }
-
-            Section("App Information") {
-                LabeledContent("Version", value: appVersion)
-                LabeledContent("Data", value: "Stored locally")
-                LabeledContent("Privacy", value: "No accounts, analytics, or network services")
-            }
-
-            if let statusMessage = appState.statusMessage {
+        VStack(spacing: 12) {
+            Form {
                 Section {
-                    Label(statusMessage, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                    preferenceRow(
+                        "Launch at Login",
+                        description: "Open SleepMode when you sign in.",
+                        isOn: Binding(
+                            get: { appState.launchAtLogin },
+                            set: appState.setLaunchAtLogin
+                        ),
+                        isUpdating: appState.isUpdatingLoginItem
+                    )
+
+                    preferenceRow(
+                        "Remember selected mode",
+                        description: "Restore your last mode when SleepMode opens.",
+                        isOn: Binding(
+                            get: { appState.rememberSelectedMode },
+                            set: appState.setRememberSelectedMode
+                        )
+                    )
+
+                    preferenceRow(
+                        "Turn Wi-Fi off when sleeping",
+                        description: "Restore Wi-Fi automatically after wake.",
+                        isOn: Binding(
+                            get: { appState.turnWiFiOffDuringSleep },
+                            set: appState.setWiFiSleepBehavior
+                        )
+                    )
                 }
             }
+            .formStyle(.grouped)
+            .scrollDisabled(true)
+
+            if let statusMessage = appState.statusMessage {
+                statusCallout(statusMessage)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 16)
+            }
         }
-        .formStyle(.grouped)
-        .padding(16)
-        .frame(width: 470, height: 360)
+        .frame(width: 420, height: settingsHeight)
     }
 
-    private var appVersion: String {
-        let version = Bundle.main.object(
-            forInfoDictionaryKey: "CFBundleShortVersionString"
-        ) as? String
-        return version ?? "0.1"
+    private var settingsHeight: CGFloat {
+        appState.statusMessage == nil ? 224 : 276
+    }
+
+    private func preferenceRow(
+        _ title: String,
+        description: String,
+        isOn: Binding<Bool>,
+        isUpdating: Bool = false
+    ) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 20)
+
+            if isUpdating {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            Toggle(title, isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .disabled(isUpdating)
+        }
+        .padding(.vertical, 3)
+    }
+
+    private func statusCallout(_ message: String) -> some View {
+        Label(message, systemImage: "exclamationmark.triangle.fill")
+            .font(.caption)
+            .foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                Color.orange.opacity(0.1),
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
     }
 }

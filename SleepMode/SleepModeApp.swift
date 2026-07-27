@@ -33,7 +33,7 @@ struct SleepModeApp: App {
         Settings {
             SettingsView(appState: appState)
         }
-        .defaultSize(width: 470, height: 360)
+        .defaultSize(width: 420, height: 224)
         .windowResizability(.contentSize)
     }
 }

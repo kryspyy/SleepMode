@@ -6,6 +6,22 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A0000000000000000000001E /* SleepModeHelper in Copy Helper */ = {
+			isa = PBXBuildFile;
+			fileRef = A00000000000000000000008 /* SleepModeHelper */;
+			settings = {
+				ATTRIBUTES = (
+					CodeSignOnCopy,
+				);
+			};
+		};
+		A0000000000000000000001F /* local.sleepmode.pmsethelper.plist in Copy Daemon Plist */ = {
+			isa = PBXBuildFile;
+			fileRef = A00000000000000000000009 /* local.sleepmode.pmsethelper.plist */;
+		};
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		A00000000000000000000020 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -14,7 +30,39 @@
 			remoteGlobalIDString = A00000000000000000000010;
 			remoteInfo = SleepMode;
 		};
+		A00000000000000000000022 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A0000000000000000000001B;
+			remoteInfo = SleepModeHelper;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A0000000000000000000001C /* Copy Helper */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library/HelperTools;
+			dstSubfolderSpec = 1;
+			files = (
+				A0000000000000000000001E /* SleepModeHelper in Copy Helper */,
+			);
+			name = "Copy Helper";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A0000000000000000000001D /* Copy Daemon Plist */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library/LaunchDaemons;
+			dstSubfolderSpec = 1;
+			files = (
+				A0000000000000000000001F /* local.sleepmode.pmsethelper.plist in Copy Daemon Plist */,
+			);
+			name = "Copy Daemon Plist";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		A00000000000000000000006 /* SleepMode.app */ = {
@@ -31,6 +79,19 @@
 			path = SleepModeTests.xctest;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
+		A00000000000000000000008 /* SleepModeHelper */ = {
+			isa = PBXFileReference;
+			explicitFileType = "compiled.mach-o.executable";
+			includeInIndex = 0;
+			path = SleepModeHelper;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		A00000000000000000000009 /* local.sleepmode.pmsethelper.plist */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.plist.xml;
+			path = HelperAssets/local.sleepmode.pmsethelper.plist;
+			sourceTree = "<group>";
+		};
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -42,6 +103,11 @@
 		A00000000000000000000005 /* SleepModeTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SleepModeTests;
+			sourceTree = "<group>";
+		};
+		A0000000000000000000000A /* SleepModeHelper */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SleepModeHelper;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -61,6 +127,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A00000000000000000000019 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -69,6 +142,8 @@
 			children = (
 				A00000000000000000000004 /* SleepMode */,
 				A00000000000000000000005 /* SleepModeTests */,
+				A0000000000000000000000A /* SleepModeHelper */,
+				A00000000000000000000009 /* local.sleepmode.pmsethelper.plist */,
 				A00000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -78,6 +153,7 @@
 			children = (
 				A00000000000000000000006 /* SleepMode.app */,
 				A00000000000000000000007 /* SleepModeTests.xctest */,
+				A00000000000000000000008 /* SleepModeHelper */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -92,10 +168,13 @@
 				A00000000000000000000011 /* Sources */,
 				A00000000000000000000012 /* Frameworks */,
 				A00000000000000000000013 /* Resources */,
+				A0000000000000000000001C /* Copy Helper */,
+				A0000000000000000000001D /* Copy Daemon Plist */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A00000000000000000000023 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A00000000000000000000004 /* SleepMode */,
@@ -130,6 +209,28 @@
 			productReference = A00000000000000000000007 /* SleepModeTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		A0000000000000000000001B /* SleepModeHelper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000033 /* Build configuration list for PBXNativeTarget "SleepModeHelper" */;
+			buildPhases = (
+				A00000000000000000000018 /* Sources */,
+				A00000000000000000000019 /* Frameworks */,
+				A0000000000000000000001A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A0000000000000000000000A /* SleepModeHelper */,
+			);
+			name = SleepModeHelper;
+			packageProductDependencies = (
+			);
+			productName = SleepModeHelper;
+			productReference = A00000000000000000000008 /* SleepModeHelper */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -146,6 +247,9 @@
 					A00000000000000000000014 = {
 						CreatedOnToolsVersion = 26.6;
 						TestTargetID = A00000000000000000000010;
+					};
+					A0000000000000000000001B = {
+						CreatedOnToolsVersion = 26.6;
 					};
 				};
 			};
@@ -165,6 +269,7 @@
 			targets = (
 				A00000000000000000000010 /* SleepMode */,
 				A00000000000000000000014 /* SleepModeTests */,
+				A0000000000000000000001B /* SleepModeHelper */,
 			);
 		};
 /* End PBXProject section */
@@ -178,6 +283,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A00000000000000000000017 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A0000000000000000000001A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -201,6 +313,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A00000000000000000000018 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -208,6 +327,11 @@
 			isa = PBXTargetDependency;
 			target = A00000000000000000000010 /* SleepMode */;
 			targetProxy = A00000000000000000000020 /* PBXContainerItemProxy */;
+		};
+		A00000000000000000000023 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A0000000000000000000001B /* SleepModeHelper */;
+			targetProxy = A00000000000000000000022 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -321,7 +445,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 9;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = SleepMode;
@@ -334,6 +458,7 @@
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = local.sleepmode.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = SleepMode/AuthorizedHelperInstall.h;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 5.0;
@@ -343,8 +468,9 @@
 		A00000000000000000000043 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 9;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = SleepMode;
@@ -357,6 +483,7 @@
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = local.sleepmode.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = SleepMode/AuthorizedHelperInstall.h;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 5.0;
@@ -403,6 +530,33 @@
 			};
 			name = Release;
 		};
+		A00000000000000000000046 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = local.sleepmode.pmsethelper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A00000000000000000000047 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_HARDENED_RUNTIME = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = local.sleepmode.pmsethelper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -429,6 +583,15 @@
 			buildConfigurations = (
 				A00000000000000000000040 /* Debug */,
 				A00000000000000000000041 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A00000000000000000000033 /* Build configuration list for PBXNativeTarget "SleepModeHelper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000046 /* Debug */,
+				A00000000000000000000047 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

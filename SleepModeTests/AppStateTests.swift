@@ -3,6 +3,53 @@ import XCTest
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testPMSetSleepDisabledOutputParsing() {
+        let enabledOutput = """
+        System-wide power settings:
+         SleepDisabled\t\t1
+        Currently in use:
+         sleep                1
+        """
+        let disabledOutput = """
+        System-wide power settings:
+         SleepDisabled\t\t0
+        """
+
+        XCTAssertEqual(sleepDisabledValue(from: enabledOutput), true)
+        XCTAssertEqual(sleepDisabledValue(from: disabledOutput), false)
+        XCTAssertNil(sleepDisabledValue(from: "Currently in use:\n sleep 1"))
+    }
+
+    func testSleepControlUsesPrivilegedPersistentSleepSetting() {
+        let privileged = MockPrivilegedOperations()
+        let sleepControl = SleepControlService(privilegedOperations: privileged)
+        var results: [Result<Bool, Error>] = []
+
+        sleepControl.setPreventingSleep(true) { results.append($0) }
+        XCTAssertTrue(sleepControl.isPreventingSleep)
+        XCTAssertEqual(privileged.requestedSleepDisabledStates, [true])
+
+        sleepControl.setPreventingSleep(false) { results.append($0) }
+        XCTAssertFalse(sleepControl.isPreventingSleep)
+        XCTAssertEqual(privileged.requestedSleepDisabledStates, [true, false])
+        XCTAssertEqual(results.compactMap { try? $0.get() }, [true, false])
+    }
+
+    func testSleepControlPropagatesPrivilegedFailureWithoutClaimingSuccess() {
+        let privileged = MockPrivilegedOperations()
+        privileged.setSleepDisabledError = SleepModeError.operationFailed("pmset failed")
+        let sleepControl = SleepControlService(privilegedOperations: privileged)
+
+        var receivedError: Error?
+        sleepControl.setPreventingSleep(true) {
+            if case let .failure(error) = $0 {
+                receivedError = error
+            }
+        }
+        XCTAssertNotNil(receivedError)
+        XCTAssertFalse(sleepControl.isPreventingSleep)
+    }
+
     func testStayAwakeTransitionConfirmsAssertionAndStartsLidMonitoring() {
         let system = makeTestSystem()
         system.state.start()
@@ -13,6 +60,41 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(system.sleep.isPreventingSleep)
         XCTAssertTrue(system.lid.isMonitoring)
         XCTAssertEqual(system.sleep.preventCallCount, 1)
+    }
+
+    func testPendingModeChangeDoesNotBlockOrClaimUnconfirmedState() {
+        let system = makeTestSystem()
+        system.state.start()
+        system.sleep.automaticallyCompletes = false
+
+        system.state.selectMode(.stayAwake)
+
+        XCTAssertTrue(system.state.isChangingMode)
+        XCTAssertEqual(system.state.pendingMode, .stayAwake)
+        XCTAssertEqual(system.state.mode, .normal)
+        XCTAssertFalse(system.lid.isMonitoring)
+
+        system.sleep.completeNextChange()
+
+        XCTAssertFalse(system.state.isChangingMode)
+        XCTAssertNil(system.state.pendingMode)
+        XCTAssertEqual(system.state.mode, .stayAwake)
+        XCTAssertTrue(system.lid.isMonitoring)
+    }
+
+    func testShutdownIgnoresAStaleModeCompletion() {
+        let system = makeTestSystem()
+        system.state.start()
+        system.sleep.automaticallyCompletes = false
+        system.state.selectMode(.stayAwake)
+
+        system.state.shutdown()
+        system.sleep.completeNextChange()
+
+        XCTAssertEqual(system.state.mode, .normal)
+        XCTAssertFalse(system.state.isChangingMode)
+        XCTAssertFalse(system.lid.isMonitoring)
+        XCTAssertEqual(system.sleep.restoreCallCount, 1)
     }
 
     func testNormalTransitionStopsLidMonitoringAndReleasesAssertion() {
@@ -39,6 +121,21 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(system.state.statusMessage, "No assertion")
     }
 
+    func testLidMonitoringFailureRollsBackStayAwake() {
+        let system = makeTestSystem()
+        system.state.start()
+        system.lid.startError = SleepModeError.operationFailed("Lid monitor failed")
+
+        system.state.selectMode(.stayAwake)
+
+        XCTAssertEqual(system.state.mode, .normal)
+        XCTAssertFalse(system.sleep.isPreventingSleep)
+        XCTAssertFalse(system.lid.isMonitoring)
+        XCTAssertEqual(system.sleep.preventCallCount, 1)
+        XCTAssertEqual(system.sleep.allowCallCount, 2)
+        XCTAssertEqual(system.state.statusMessage, "Lid monitor failed")
+    }
+
     func testLidCloseLocksOnlyWhileStayAwakeIsActive() {
         let system = makeTestSystem()
         system.state.start()
@@ -46,10 +143,16 @@ final class AppStateTests: XCTestCase {
 
         system.lid.emit(closed: true)
         XCTAssertEqual(system.locker.lockCallCount, 1)
+        XCTAssertEqual(system.locker.turnDisplayOffCallCount, 1)
+
+        system.lid.emit(closed: false)
+        XCTAssertEqual(system.locker.lockCallCount, 2)
+        XCTAssertEqual(system.locker.turnDisplayOffCallCount, 1)
 
         system.state.selectMode(.normal)
         system.lid.emit(closed: true)
-        XCTAssertEqual(system.locker.lockCallCount, 1)
+        XCTAssertEqual(system.locker.lockCallCount, 2)
+        XCTAssertEqual(system.locker.turnDisplayOffCallCount, 1)
     }
 
     func testSystemSleepTurnsWiFiOffAndWakeRestoresOnlyAppChange() {
@@ -79,6 +182,36 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(system.wifi.requestedPowerStates.isEmpty)
         XCTAssertFalse(system.preferences.wifiWasDisabledByApp)
         XCTAssertFalse(system.wifi.isPoweredOn)
+    }
+
+    func testFailedWiFiDisableDoesNotClaimWiFiThatRemainedOn() {
+        let system = makeTestSystem { preferences in
+            preferences.turnWiFiOffDuringSleep = true
+        }
+        system.state.start()
+        system.wifi.failWhenSetting = false
+
+        system.power.emitSleep()
+
+        XCTAssertTrue(system.wifi.isPoweredOn)
+        XCTAssertFalse(system.preferences.wifiWasDisabledByApp)
+        XCTAssertEqual(system.state.statusMessage, "Wi-Fi test failure")
+    }
+
+    func testDelayedSleepCallbackCannotTurnWiFiOffAfterWake() {
+        let system = makeTestSystem { preferences in
+            preferences.turnWiFiOffDuringSleep = true
+        }
+        system.state.start()
+        system.wifi.automaticallyCompletesPowerState = false
+
+        system.power.emitSleep()
+        system.power.emitWake()
+        system.wifi.completeNextPowerState()
+
+        XCTAssertTrue(system.wifi.isPoweredOn)
+        XCTAssertTrue(system.wifi.requestedPowerStates.isEmpty)
+        XCTAssertFalse(system.preferences.wifiWasDisabledByApp)
     }
 
     func testWiFiRecoveryFailureKeepsMarkerAndRetries() {
@@ -128,7 +261,7 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(system.lid.isMonitoring)
         XCTAssertTrue(system.wifi.isPoweredOn)
         XCTAssertFalse(system.preferences.wifiWasDisabledByApp)
-        XCTAssertEqual(system.privileged.restoreCallCount, 1)
+        XCTAssertEqual(system.sleep.restoreCallCount, 1)
     }
 
     func testRememberModePersistsOnlyAfterConfirmedTransition() {

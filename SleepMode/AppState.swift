@@ -4,7 +4,10 @@ import Foundation
 @MainActor
 final class AppState: ObservableObject {
     @Published private(set) var mode: AppMode = .normal
+    @Published private(set) var pendingMode: AppMode?
+    @Published private(set) var isChangingMode = false
     @Published private(set) var launchAtLogin = false
+    @Published private(set) var isUpdatingLoginItem = false
     @Published var rememberSelectedMode: Bool
     @Published var turnWiFiOffDuringSleep: Bool
     @Published private(set) var statusMessage: String?
@@ -17,7 +20,12 @@ final class AppState: ObservableObject {
     private let preferences: PreferencesServing
     private let loginItem: LoginItemControlling
     private let privilegedOperations: PrivilegedOperationsServing
+
     private var started = false
+    private var shuttingDown = false
+    private var systemIsSleeping = false
+    private var lidWasClosedInStayAwake = false
+    private var modeRequestID = 0
 
     init(
         sleepControl: SleepControlling,
@@ -43,20 +51,27 @@ final class AppState: ObservableObject {
     }
 
     static func live() -> AppState {
-        AppState(
-            sleepControl: SleepControlService(),
+        let privilegedOperations = PrivilegedOperationsService()
+        return AppState(
+            sleepControl: SleepControlService(
+                privilegedOperations: privilegedOperations
+            ),
             lidMonitor: LidMonitoringService(),
             powerMonitor: SystemPowerMonitor(),
             screenLocker: ScreenLockService(),
             wifiControl: WiFiService(),
             preferences: PreferencesService(),
             loginItem: LoginItemService(),
-            privilegedOperations: PrivilegedOperationsService()
+            privilegedOperations: privilegedOperations
         )
     }
 
     var menuBarSymbol: String {
         mode.symbolName
+    }
+
+    var pickerMode: AppMode {
+        pendingMode ?? mode
     }
 
     var contextualText: String {
@@ -76,29 +91,42 @@ final class AppState: ObservableObject {
     func start() {
         guard !started else { return }
         started = true
+        shuttingDown = false
 
         powerMonitor.start(
             onSleep: { [weak self] in self?.systemWillSleep() },
             onWake: { [weak self] in self?.systemDidWake() }
         )
 
-        recoverWiFiIfNeeded()
-        let initialMode: AppMode = rememberSelectedMode ? preferences.selectedMode : .normal
-        selectMode(initialMode)
+        let initialMode: AppMode =
+            rememberSelectedMode ? preferences.selectedMode : .normal
+        recoverWiFiIfNeeded { [weak self] in
+            self?.selectMode(initialMode)
+        }
     }
 
     func selectMode(_ requestedMode: AppMode) {
-        statusMessage = nil
+        guard !shuttingDown, !isChangingMode else { return }
 
-        switch requestedMode {
-        case .stayAwake:
-            activateStayAwake()
-        case .normal:
-            activateNormal()
+        statusMessage = nil
+        isChangingMode = true
+        pendingMode = requestedMode
+        modeRequestID += 1
+        let requestID = modeRequestID
+
+        if requestedMode == .normal {
+            lidWasClosedInStayAwake = false
+            lidMonitor.stop()
         }
 
-        if rememberSelectedMode, mode == requestedMode {
-            preferences.selectedMode = requestedMode
+        sleepControl.setPreventingSleep(requestedMode == .stayAwake) { [weak self] result in
+            self?.onMain {
+                self?.completeModeChange(
+                    requestedMode,
+                    requestID: requestID,
+                    result: result
+                )
+            }
         }
     }
 
@@ -120,29 +148,39 @@ final class AppState: ObservableObject {
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
+        guard !isUpdatingLoginItem else { return }
         statusMessage = nil
-        do {
-            try loginItem.setEnabled(enabled)
-            launchAtLogin = loginItem.isEnabled
-        } catch {
-            launchAtLogin = loginItem.isEnabled
-            report(error)
+        isUpdatingLoginItem = true
+
+        loginItem.setEnabled(enabled) { [weak self] result in
+            self?.onMain {
+                guard let self else { return }
+                self.isUpdatingLoginItem = false
+                switch result {
+                case let .success(confirmed):
+                    self.launchAtLogin = confirmed
+                case let .failure(error):
+                    self.launchAtLogin = self.loginItem.isEnabled
+                    self.report(error)
+                }
+            }
         }
     }
 
     func shutdown() {
+        guard started else { return }
+        shuttingDown = true
+        systemIsSleeping = false
+        modeRequestID += 1
+        pendingMode = nil
+        isChangingMode = false
+
         lidMonitor.stop()
+        lidWasClosedInStayAwake = false
         powerMonitor.stop()
-
-        do {
-            try sleepControl.allowSleep()
-        } catch {
-            report(error)
-        }
-        mode = sleepControl.isPreventingSleep ? .stayAwake : .normal
-
+        sleepControl.restoreSafeDefaults()
+        mode = .normal
         recoverWiFiIfNeeded()
-        privilegedOperations.restoreSafeDefaults()
         started = false
     }
 
@@ -151,90 +189,253 @@ final class AppState: ObservableObject {
         NSApp.terminate(nil)
     }
 
-    private func activateStayAwake() {
-        do {
-            try sleepControl.preventSleep()
-            guard sleepControl.isPreventingSleep else {
-                throw SleepModeError.operationFailed("macOS did not confirm Stay Awake.")
+    private func completeModeChange(
+        _ requestedMode: AppMode,
+        requestID: Int,
+        result: Result<Bool, Error>
+    ) {
+        guard !shuttingDown, requestID == modeRequestID else { return }
+
+        switch result {
+        case let .success(confirmedState):
+            let confirmedMode: AppMode = confirmedState ? .stayAwake : .normal
+            guard confirmedMode == requestedMode else {
+                finishModeChange(
+                    confirmedMode: confirmedMode,
+                    requestedMode: requestedMode,
+                    error: SleepModeError.operationFailed(
+                        "macOS confirmed a different sleep mode."
+                    )
+                )
+                return
             }
 
-            try lidMonitor.start { [weak self] closed in
-                guard closed else { return }
-                self?.lockForLidClose()
-            }
-            mode = .stayAwake
-        } catch {
-            lidMonitor.stop()
-            try? sleepControl.allowSleep()
-            mode = sleepControl.isPreventingSleep ? .stayAwake : .normal
-            report(error)
-        }
-    }
-
-    private func activateNormal() {
-        lidMonitor.stop()
-        do {
-            try sleepControl.allowSleep()
-            guard !sleepControl.isPreventingSleep else {
-                throw SleepModeError.operationFailed("macOS did not confirm Normal mode.")
-            }
-            mode = .normal
-        } catch {
-            mode = sleepControl.isPreventingSleep ? .stayAwake : .normal
-            if mode == .stayAwake {
-                try? lidMonitor.start { [weak self] closed in
-                    guard closed else { return }
-                    self?.lockForLidClose()
+            if confirmedMode == .stayAwake {
+                do {
+                    try lidMonitor.start { [weak self] closed in
+                        self?.handleLidChange(closed: closed)
+                    }
+                } catch {
+                    rollbackStayAwake(after: error, requestID: requestID)
+                    return
                 }
             }
+
+            finishModeChange(
+                confirmedMode: confirmedMode,
+                requestedMode: requestedMode,
+                error: nil
+            )
+
+        case let .failure(error):
+            let confirmedMode: AppMode =
+                sleepControl.isPreventingSleep ? .stayAwake : .normal
+            if confirmedMode == .stayAwake {
+                do {
+                    try lidMonitor.start { [weak self] closed in
+                        self?.handleLidChange(closed: closed)
+                    }
+                } catch {
+                    rollbackStayAwake(after: error, requestID: requestID)
+                    return
+                }
+            }
+            finishModeChange(
+                confirmedMode: confirmedMode,
+                requestedMode: requestedMode,
+                error: error
+            )
+        }
+    }
+
+    private func rollbackStayAwake(after originalError: Error, requestID: Int) {
+        lidMonitor.stop()
+        sleepControl.setPreventingSleep(false) { [weak self] result in
+            self?.onMain {
+                guard
+                    let self,
+                    !self.shuttingDown,
+                    requestID == self.modeRequestID
+                else {
+                    return
+                }
+
+                let confirmedMode: AppMode
+                switch result {
+                case let .success(isDisabled):
+                    confirmedMode = isDisabled ? .stayAwake : .normal
+                case .failure:
+                    confirmedMode =
+                        self.sleepControl.isPreventingSleep ? .stayAwake : .normal
+                }
+                self.finishModeChange(
+                    confirmedMode: confirmedMode,
+                    requestedMode: .stayAwake,
+                    error: originalError
+                )
+            }
+        }
+    }
+
+    private func finishModeChange(
+        confirmedMode: AppMode,
+        requestedMode: AppMode,
+        error: Error?
+    ) {
+        mode = confirmedMode
+        if confirmedMode == .normal {
+            lidWasClosedInStayAwake = false
+        }
+        pendingMode = nil
+        isChangingMode = false
+
+        if rememberSelectedMode, confirmedMode == requestedMode {
+            preferences.selectedMode = confirmedMode
+        }
+        if let error {
             report(error)
         }
     }
 
-    private func lockForLidClose() {
+    private func handleLidChange(closed: Bool) {
         guard mode == .stayAwake else { return }
+
+        if closed {
+            lidWasClosedInStayAwake = true
+        } else {
+            guard lidWasClosedInStayAwake else { return }
+            lidWasClosedInStayAwake = false
+        }
+
+        // Request the lock on close and once more on reopen. Newer macOS
+        // versions can ignore ScreenSaverEngine while the internal display is
+        // transitioning off; the reopen retry completes before normal use.
         do {
             try screenLocker.lock()
         } catch {
             report(error)
         }
+
+        // `disablesleep 1` prevents system sleep but can also leave the display
+        // pipeline awake. Turn it off only on the closed transition; the lid
+        // reopening remains free to wake the display normally.
+        if closed {
+            do {
+                try screenLocker.turnDisplayOff()
+            } catch {
+                report(error)
+            }
+        }
     }
 
     private func systemWillSleep() {
-        guard turnWiFiOffDuringSleep, wifiControl.isPoweredOn else { return }
+        guard turnWiFiOffDuringSleep else { return }
+        systemIsSleeping = true
 
-        // Persist intent first. If the app is terminated between sleep and wake,
-        // the next launch restores Wi-Fi before doing anything else.
-        preferences.wifiWasDisabledByApp = true
-        do {
-            try wifiControl.setPower(false)
-        } catch {
-            report(error)
+        wifiControl.powerState { [weak self] result in
+            self?.onMain {
+                guard
+                    let self,
+                    self.systemIsSleeping,
+                    self.turnWiFiOffDuringSleep
+                else {
+                    return
+                }
+                switch result {
+                case .success(true):
+                    self.preferences.wifiWasDisabledByApp = true
+                    self.wifiControl.setPower(false) { [weak self] changeResult in
+                        self?.onMain {
+                            self?.completeWiFiDisable(changeResult)
+                        }
+                    }
+                case .success(false):
+                    break
+                case .failure(let error):
+                    self.report(error)
+                }
+            }
+        }
+    }
+
+    private func completeWiFiDisable(_ result: Result<Bool, Error>) {
+        switch result {
+        case let .success(poweredOn):
+            if poweredOn {
+                preferences.wifiWasDisabledByApp = false
+                report(SleepModeError.operationFailed(
+                    "macOS did not turn Wi-Fi off before sleep."
+                ))
+            }
+        case let .failure(error):
+            // A command can fail after changing power. Inspect the real state
+            // before deciding whether SleepMode owns recovery.
+            wifiControl.powerState { [weak self] stateResult in
+                self?.onMain {
+                    guard let self else { return }
+                    if case let .success(poweredOn) = stateResult, poweredOn {
+                        self.preferences.wifiWasDisabledByApp = false
+                    }
+                    self.report(error)
+                }
+            }
         }
     }
 
     private func systemDidWake() {
+        systemIsSleeping = false
         recoverWiFiIfNeeded()
     }
 
-    private func recoverWiFiIfNeeded() {
-        guard preferences.wifiWasDisabledByApp else { return }
-        do {
-            if !wifiControl.isPoweredOn {
-                try wifiControl.setPower(true)
+    private func recoverWiFiIfNeeded(completion: (() -> Void)? = nil) {
+        guard preferences.wifiWasDisabledByApp else {
+            completion?()
+            return
+        }
+
+        wifiControl.powerState { [weak self] stateResult in
+            self?.onMain {
+                guard let self else { return }
+                switch stateResult {
+                case .success(true):
+                    self.preferences.wifiWasDisabledByApp = false
+                    completion?()
+                case .success(false):
+                    self.wifiControl.setPower(true) { [weak self] result in
+                        self?.onMain {
+                            guard let self else { return }
+                            switch result {
+                            case .success(true):
+                                self.preferences.wifiWasDisabledByApp = false
+                            case .success(false):
+                                self.report(SleepModeError.operationFailed(
+                                    "macOS did not confirm Wi-Fi recovery."
+                                ))
+                            case .failure(let error):
+                                self.report(error)
+                            }
+                            completion?()
+                        }
+                    }
+                case .failure(let error):
+                    self.report(error)
+                    completion?()
+                }
             }
-            guard wifiControl.isPoweredOn else {
-                throw SleepModeError.operationFailed("macOS did not confirm Wi-Fi recovery.")
-            }
-            preferences.wifiWasDisabledByApp = false
-        } catch {
-            // Keep the marker so another wake or launch retries recovery.
-            report(error)
         }
     }
 
     private func report(_ error: Error) {
+        guard !shuttingDown else { return }
         statusMessage = (error as? LocalizedError)?.errorDescription
             ?? error.localizedDescription
+    }
+
+    private func onMain(_ action: @escaping () -> Void) {
+        if Thread.isMainThread {
+            action()
+        } else {
+            DispatchQueue.main.async(execute: action)
+        }
     }
 }

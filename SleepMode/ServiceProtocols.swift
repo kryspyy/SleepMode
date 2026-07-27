@@ -14,8 +14,11 @@ enum SleepModeError: LocalizedError, Equatable {
 
 protocol SleepControlling: AnyObject {
     var isPreventingSleep: Bool { get }
-    func preventSleep() throws
-    func allowSleep() throws
+    func setPreventingSleep(
+        _ enabled: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    )
+    func restoreSafeDefaults()
 }
 
 protocol LidMonitoring: AnyObject {
@@ -31,11 +34,15 @@ protocol SystemPowerMonitoring: AnyObject {
 
 protocol ScreenLocking: AnyObject {
     func lock() throws
+    func turnDisplayOff() throws
 }
 
 protocol WiFiControlling: AnyObject {
-    var isPoweredOn: Bool { get }
-    func setPower(_ poweredOn: Bool) throws
+    func powerState(completion: @escaping (Result<Bool, Error>) -> Void)
+    func setPower(
+        _ poweredOn: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    )
 }
 
 protocol PreferencesServing: AnyObject {
@@ -47,7 +54,10 @@ protocol PreferencesServing: AnyObject {
 
 protocol LoginItemControlling: AnyObject {
     var isEnabled: Bool { get }
-    func setEnabled(_ enabled: Bool) throws
+    func setEnabled(
+        _ enabled: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    )
 }
 
 enum ClosedLidCapability: Equatable {
@@ -57,5 +67,9 @@ enum ClosedLidCapability: Equatable {
 
 protocol PrivilegedOperationsServing: AnyObject {
     var closedLidCapability: ClosedLidCapability { get }
+    func setSleepDisabled(
+        _ disabled: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    )
     func restoreSafeDefaults()
 }

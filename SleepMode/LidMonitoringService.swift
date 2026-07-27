@@ -28,6 +28,7 @@ final class LidMonitoringService: LidMonitoring {
     private var notificationPort: IONotificationPortRef?
     private var notifier: io_object_t = 0
     private var rootDomain: io_service_t = 0
+    private var pollTimer: DispatchSourceTimer?
     private var onChange: ((Bool) -> Void)?
     private var lastClosedState: Bool?
 
@@ -78,6 +79,27 @@ final class LidMonitoringService: LidMonitoring {
         if let currentState = currentLidState() {
             receive(closed: currentState)
         }
+
+        // Clamshell notifications can be coalesced while macOS transitions the
+        // internal display. Polling the same public IOKit property is a small,
+        // reliable fallback and runs only while Stay Awake is active.
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(
+            deadline: .now() + .milliseconds(250),
+            repeating: .milliseconds(250),
+            leeway: .milliseconds(50)
+        )
+        timer.setEventHandler { [weak self] in
+            guard
+                let self,
+                let currentState = self.currentLidState()
+            else {
+                return
+            }
+            self.receive(closed: currentState)
+        }
+        pollTimer = timer
+        timer.resume()
     }
 
     func stop() {
@@ -85,6 +107,8 @@ final class LidMonitoringService: LidMonitoring {
         onChange = nil
         lastClosedState = nil
 
+        pollTimer?.cancel()
+        pollTimer = nil
         if notifier != 0 {
             IOObjectRelease(notifier)
             notifier = 0

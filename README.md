@@ -1,67 +1,67 @@
 # SleepMode
 
-SleepMode is a local-only macOS menu-bar utility built with SwiftUI and Liquid
-Glass. It provides two confirmed modes:
+SleepMode is a local-only macOS menu-bar utility built with SwiftUI.
 
-- **Stay Awake** creates a process-scoped IOKit assertion that prevents idle
-  system sleep. Lid monitoring is active only in this mode, and a close event
-  locks the current session.
-- **Normal** releases SleepMode's assertion and restores standard macOS power
-  behavior.
+- **Stay Awake** asks the bundled, system-managed helper to run
+  `/usr/bin/pmset -a disablesleep 1`. It reads the live `pmset` state before
+  updating the UI. Lid monitoring is active only in this mode.
+- **Normal** runs `/usr/bin/pmset -a disablesleep 0`, confirms the live system
+  state, and stops lid monitoring.
+- **Turn Wi-Fi off when sleeping** listens only for real
+  `NSWorkspace.willSleepNotification` and `didWakeNotification` events. It uses
+  `/usr/sbin/networksetup -setairportpower`, records ownership before turning
+  Wi-Fi off, and restores Wi-Fi only when SleepMode made the change.
 
-The independent **Turn Wi-Fi off when sleeping** option listens only for real
-`NSWorkspace.willSleepNotification` and `didWakeNotification` events. It records
-ownership before turning Wi-Fi off, restores only a change it made, and keeps a
-recovery marker until macOS confirms that Wi-Fi is back on.
+The app has no accounts, analytics, or network services.
 
-## Important platform boundary
+## First-run setup
 
-Apple's public `PreventUserIdleSystemSleep` assertion explicitly does **not**
-override forced lid-close sleep. SleepMode therefore does not modify undocumented
-power settings, invoke `sudo`, or install a root helper that pretends to provide
-that guarantee. Closing the lid locks the session, but whether background work
-continues with the lid closed remains macOS-managed (for example, supported
-closed-display configurations).
+1. Move `SleepMode.app` to `/Applications`.
+2. Launch SleepMode.
+3. Select **Stay Awake**.
+4. On first use, approve the standard administrator prompt that installs the
+   fixed SleepMode helper.
 
-This is a deliberate safety boundary. Process-scoped assertions are
-automatically released by macOS after a crash, so SleepMode cannot leave sleep
-disabled. The privileged-operations boundary is isolated in the architecture,
-but no helper is installed because none of the implemented public operations
-requires root access.
+The helper is installed in `/Library/PrivilegedHelperTools` and registered by
+its root-owned `/Library/LaunchDaemons` property list. Later mode changes do not
+need another password. The helper accepts only the two fixed `pmset`
+enable/disable operations and verifies the calling user and SleepMode bundle
+identifier. It does not run `sudo` or accept arbitrary commands. Helper
+communication and system commands run away from the main thread so the menu
+remains responsive.
 
-References:
+For lid-close locking on macOS versions where `CGSession` is unavailable,
+SleepMode launches the native ScreenSaverEngine through Launch Services. It
+observes the public IOKit lid notification with a live-state polling fallback
+and retries the lock as the lid reopens. On lid closure it also runs
+`/usr/bin/pmset displaysleepnow`, which turns the display off without allowing
+the computer itself to sleep. Set **System Settings → Lock Screen → Require
+password after screen saver begins or display is turned off** to **Immediately**
+for immediate locking.
 
-- [Apple: PreventUserIdleSystemSleep](https://developer.apple.com/documentation/iokit/kiopmassertiontypepreventuseridlesystemsleep)
-- [Apple: workspace sleep notification](https://developer.apple.com/documentation/appkit/nsworkspace/willsleepnotification)
-- [Apple: Service Management](https://developer.apple.com/documentation/servicemanagement/smappservice)
+## Safety and recovery
 
-## Requirements and setup
+`disablesleep` is persistent:
 
-- Xcode 26.6 or later
-- macOS 26 or later
-- A Mac developer signing identity for distribution
+- Normal mode and Quit explicitly restore `disablesleep 0`.
+- Unless **Remember selected mode** is enabled, launch selects Normal.
+- The app reads the live `pmset` state instead of trusting a saved mode.
 
-1. Open `SleepMode.xcodeproj`.
-2. Select the **SleepMode** target, choose your Development Team, and replace
-   `local.sleepmode.app` with your reverse-DNS bundle identifier.
-3. Build and run the shared **SleepMode** scheme.
+For Wi-Fi, an ownership marker is written before power is turned off. Wake,
+launch, disabling the option, and app shutdown all retry restoration until
+macOS confirms Wi-Fi is on.
 
-The app is `LSUIElement`-only, so it appears in the menu bar and not the Dock.
-No account, Accessibility permission, AppleScript, analytics, or external
-network service is used. The App Sandbox is intentionally not enabled because
-the app integrates with IOKit, CoreWLAN, and the macOS session service; Hardened
-Runtime is enabled for signed builds.
+## Signing
 
-**Launch at Login** uses `SMAppService.mainApp`. macOS may show the standard
-Login Items approval UI. Wi-Fi is controlled with the public CoreWLAN API.
+Open `SleepMode.xcodeproj`, select the **SleepMode** target, and choose your
+Development Team for distribution signing. Local ad-hoc builds are supported
+for testing because the one-time installer places the helper and launchd
+property list in macOS's protected system locations. Move the resulting app to
+`/Applications` before testing helper installation.
 
-## Architecture
-
-`AppState` coordinates narrow, injectable services for sleep assertions, lid
-events, system sleep/wake, session locking, Wi-Fi, preferences, login items, and
-the privileged-operations boundary. UI state changes only after the underlying
-service reports success. Quit and termination paths stop observers, release the
-assertion, retry Wi-Fi recovery, and restore safe defaults.
+The app uses Hardened Runtime. It is intentionally not sandboxed because it
+integrates with IOKit, CoreWLAN, Service Management, and system power/network
+tools. No Accessibility, Automation, or AppleScript permission is used.
 
 ## Build and test
 
@@ -81,7 +81,7 @@ xcodebuild \
   test
 ```
 
-The unit suite covers confirmed mode transitions, transition failures,
-lid-close locking, real sleep/wake Wi-Fi ownership, already-off Wi-Fi, recovery
-retries, crash-marker recovery, remembered mode, login-item failures, and app
-shutdown.
+The tests cover confirmed mode transitions, authorization failures,
+pending operations, stale callbacks, lid-close locking and rollback, sleep/wake
+Wi-Fi ownership, already-off Wi-Fi, delayed sleep callbacks, recovery retries,
+remembered mode, login-item failures, and shutdown recovery.
