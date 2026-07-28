@@ -6,6 +6,8 @@ final class PreferencesService: PreferencesServing {
         static let selectedMode = "selectedMode"
         static let turnWiFiOffDuringSleep = "turnWiFiOffDuringSleep"
         static let wifiWasDisabledByApp = "wifiWasDisabledByApp"
+        static let turnBluetoothOffDuringSleep = "turnBluetoothOffDuringSleep"
+        static let bluetoothWasDisabledByApp = "bluetoothWasDisabledByApp"
     }
 
     private let defaults: UserDefaults
@@ -40,5 +42,15 @@ final class PreferencesService: PreferencesServing {
     var wifiWasDisabledByApp: Bool {
         get { defaults.bool(forKey: Key.wifiWasDisabledByApp) }
         set { defaults.set(newValue, forKey: Key.wifiWasDisabledByApp) }
+    }
+
+    var turnBluetoothOffDuringSleep: Bool {
+        get { defaults.bool(forKey: Key.turnBluetoothOffDuringSleep) }
+        set { defaults.set(newValue, forKey: Key.turnBluetoothOffDuringSleep) }
+    }
+
+    var bluetoothWasDisabledByApp: Bool {
+        get { defaults.bool(forKey: Key.bluetoothWasDisabledByApp) }
+        set { defaults.set(newValue, forKey: Key.bluetoothWasDisabledByApp) }
     }
 }

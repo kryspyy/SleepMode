@@ -103,16 +103,9 @@ final class MockPowerMonitor: SystemPowerMonitoring {
     func emitWake() { onWake?() }
 }
 
-final class MockScreenLocker: ScreenLocking {
-    var error: Error?
+final class MockDisplayControl: DisplayControlling {
     var displaySleepError: Error?
-    private(set) var lockCallCount = 0
     private(set) var turnDisplayOffCallCount = 0
-
-    func lock() throws {
-        lockCallCount += 1
-        if let error { throw error }
-    }
 
     func turnDisplayOff() throws {
         turnDisplayOffCallCount += 1
@@ -160,11 +153,57 @@ final class MockWiFiControl: WiFiControlling {
     }
 }
 
+final class MockBluetoothControl: BluetoothControlling {
+    var isPoweredOn: Bool
+    var failWhenSetting: Bool?
+    var automaticallyCompletesPowerState = true
+    private(set) var requestedPowerStates: [Bool] = []
+    private(set) var powerStateCallCount = 0
+    private var pendingPowerStateCompletions: [
+        (Result<Bool, Error>) -> Void
+    ] = []
+
+    init(isPoweredOn: Bool = true) {
+        self.isPoweredOn = isPoweredOn
+    }
+
+    func powerState(completion: @escaping (Result<Bool, Error>) -> Void) {
+        powerStateCallCount += 1
+        guard automaticallyCompletesPowerState else {
+            pendingPowerStateCompletions.append(completion)
+            return
+        }
+        completion(.success(isPoweredOn))
+    }
+
+    func completeNextPowerState() {
+        guard !pendingPowerStateCompletions.isEmpty else { return }
+        pendingPowerStateCompletions.removeFirst()(.success(isPoweredOn))
+    }
+
+    func setPower(
+        _ poweredOn: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        requestedPowerStates.append(poweredOn)
+        if failWhenSetting == poweredOn {
+            completion(.failure(
+                SleepModeError.operationFailed("Bluetooth test failure")
+            ))
+            return
+        }
+        isPoweredOn = poweredOn
+        completion(.success(poweredOn))
+    }
+}
+
 final class MockPreferences: PreferencesServing {
     var rememberSelectedMode = false
     var selectedMode: AppMode = .normal
     var turnWiFiOffDuringSleep = false
     var wifiWasDisabledByApp = false
+    var turnBluetoothOffDuringSleep = false
+    var bluetoothWasDisabledByApp = false
 }
 
 final class MockLoginItem: LoginItemControlling {
@@ -215,8 +254,9 @@ struct TestSystem {
     let sleep: MockSleepControl
     let lid: MockLidMonitor
     let power: MockPowerMonitor
-    let locker: MockScreenLocker
+    let display: MockDisplayControl
     let wifi: MockWiFiControl
+    let bluetooth: MockBluetoothControl
     let preferences: MockPreferences
     let loginItem: MockLoginItem
     let privileged: MockPrivilegedOperations
@@ -225,13 +265,15 @@ struct TestSystem {
 @MainActor
 func makeTestSystem(
     wifiPoweredOn: Bool = true,
+    bluetoothPoweredOn: Bool = true,
     configure: (MockPreferences) -> Void = { _ in }
 ) -> TestSystem {
     let sleep = MockSleepControl()
     let lid = MockLidMonitor()
     let power = MockPowerMonitor()
-    let locker = MockScreenLocker()
+    let display = MockDisplayControl()
     let wifi = MockWiFiControl(isPoweredOn: wifiPoweredOn)
+    let bluetooth = MockBluetoothControl(isPoweredOn: bluetoothPoweredOn)
     let preferences = MockPreferences()
     let loginItem = MockLoginItem()
     let privileged = MockPrivilegedOperations()
@@ -242,8 +284,9 @@ func makeTestSystem(
             sleepControl: sleep,
             lidMonitor: lid,
             powerMonitor: power,
-            screenLocker: locker,
+            displayControl: display,
             wifiControl: wifi,
+            bluetoothControl: bluetooth,
             preferences: preferences,
             loginItem: loginItem,
             privilegedOperations: privileged
@@ -251,8 +294,9 @@ func makeTestSystem(
         sleep: sleep,
         lid: lid,
         power: power,
-        locker: locker,
+        display: display,
         wifi: wifi,
+        bluetooth: bluetooth,
         preferences: preferences,
         loginItem: loginItem,
         privileged: privileged

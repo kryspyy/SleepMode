@@ -25,15 +25,6 @@ struct SettingsView: View {
                             set: appState.setRememberSelectedMode
                         )
                     )
-
-                    preferenceRow(
-                        "Turn Wi-Fi off when sleeping",
-                        description: "Restore Wi-Fi automatically after wake.",
-                        isOn: Binding(
-                            get: { appState.turnWiFiOffDuringSleep },
-                            set: appState.setWiFiSleepBehavior
-                        )
-                    )
                 }
             }
             .formStyle(.grouped)
@@ -53,7 +44,7 @@ struct SettingsView: View {
     }
 
     private var settingsHeight: CGFloat {
-        appState.statusMessage == nil ? 228 : 280
+        appState.statusMessage == nil ? 168 : 220
     }
 
     private func preferenceRow(

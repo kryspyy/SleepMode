@@ -3,6 +3,22 @@ import XCTest
 
 @MainActor
 final class AppStateTests: XCTestCase {
+    func testAppIncludesBluetoothUsageDescription() {
+        let description = Bundle.main.object(
+            forInfoDictionaryKey: "NSBluetoothAlwaysUsageDescription"
+        ) as? String
+
+        XCTAssertFalse(description?.isEmpty ?? true)
+    }
+
+    func testStartRequestsBluetoothAccessImmediately() {
+        let system = makeTestSystem()
+
+        system.state.start()
+
+        XCTAssertEqual(system.bluetooth.powerStateCallCount, 1)
+    }
+
     func testPMSetSleepDisabledOutputParsing() {
         let enabledOutput = """
         System-wide power settings:
@@ -136,23 +152,20 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(system.state.statusMessage, "Lid monitor failed")
     }
 
-    func testLidCloseLocksOnlyWhileStayAwakeIsActive() {
+    func testLidCloseTurnsDisplayOffOnlyWhileStayAwakeIsActive() {
         let system = makeTestSystem()
         system.state.start()
         system.state.selectMode(.stayAwake)
 
         system.lid.emit(closed: true)
-        XCTAssertEqual(system.locker.lockCallCount, 1)
-        XCTAssertEqual(system.locker.turnDisplayOffCallCount, 1)
+        XCTAssertEqual(system.display.turnDisplayOffCallCount, 1)
 
         system.lid.emit(closed: false)
-        XCTAssertEqual(system.locker.lockCallCount, 2)
-        XCTAssertEqual(system.locker.turnDisplayOffCallCount, 1)
+        XCTAssertEqual(system.display.turnDisplayOffCallCount, 1)
 
         system.state.selectMode(.normal)
         system.lid.emit(closed: true)
-        XCTAssertEqual(system.locker.lockCallCount, 2)
-        XCTAssertEqual(system.locker.turnDisplayOffCallCount, 1)
+        XCTAssertEqual(system.display.turnDisplayOffCallCount, 1)
     }
 
     func testSystemSleepTurnsWiFiOffAndWakeRestoresOnlyAppChange() {
@@ -182,6 +195,49 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(system.wifi.requestedPowerStates.isEmpty)
         XCTAssertFalse(system.preferences.wifiWasDisabledByApp)
         XCTAssertFalse(system.wifi.isPoweredOn)
+    }
+
+    func testSystemSleepTurnsBluetoothOffAndWakeRestoresOnlyAppChange() {
+        let system = makeTestSystem { preferences in
+            preferences.turnBluetoothOffDuringSleep = true
+        }
+        system.state.start()
+
+        system.power.emitSleep()
+        XCTAssertEqual(system.bluetooth.requestedPowerStates, [false])
+        XCTAssertTrue(system.preferences.bluetoothWasDisabledByApp)
+
+        system.power.emitWake()
+        XCTAssertEqual(system.bluetooth.requestedPowerStates, [false, true])
+        XCTAssertFalse(system.preferences.bluetoothWasDisabledByApp)
+    }
+
+    func testSystemSleepDoesNotClaimBluetoothThatWasAlreadyOff() {
+        let system = makeTestSystem(bluetoothPoweredOn: false) { preferences in
+            preferences.turnBluetoothOffDuringSleep = true
+        }
+        system.state.start()
+
+        system.power.emitSleep()
+        system.power.emitWake()
+
+        XCTAssertTrue(system.bluetooth.requestedPowerStates.isEmpty)
+        XCTAssertFalse(system.preferences.bluetoothWasDisabledByApp)
+        XCTAssertFalse(system.bluetooth.isPoweredOn)
+    }
+
+    func testDisablingBluetoothSleepBehaviorRestoresAppChange() {
+        let system = makeTestSystem { preferences in
+            preferences.turnBluetoothOffDuringSleep = true
+        }
+        system.state.start()
+        system.power.emitSleep()
+
+        system.state.setBluetoothSleepBehavior(false)
+
+        XCTAssertTrue(system.bluetooth.isPoweredOn)
+        XCTAssertFalse(system.preferences.bluetoothWasDisabledByApp)
+        XCTAssertFalse(system.preferences.turnBluetoothOffDuringSleep)
     }
 
     func testFailedWiFiDisableDoesNotClaimWiFiThatRemainedOn() {
@@ -246,9 +302,10 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(system.state.mode, .stayAwake)
     }
 
-    func testShutdownRestoresNormalAndWiFi() {
+    func testShutdownRestoresNormalAndRadios() {
         let system = makeTestSystem { preferences in
             preferences.turnWiFiOffDuringSleep = true
+            preferences.turnBluetoothOffDuringSleep = true
         }
         system.state.start()
         system.state.selectMode(.stayAwake)
@@ -261,6 +318,8 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(system.lid.isMonitoring)
         XCTAssertTrue(system.wifi.isPoweredOn)
         XCTAssertFalse(system.preferences.wifiWasDisabledByApp)
+        XCTAssertTrue(system.bluetooth.isPoweredOn)
+        XCTAssertFalse(system.preferences.bluetoothWasDisabledByApp)
         XCTAssertEqual(system.sleep.restoreCallCount, 1)
     }
 

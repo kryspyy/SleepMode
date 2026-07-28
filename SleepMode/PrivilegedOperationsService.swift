@@ -48,13 +48,29 @@ final class PrivilegedOperationsService: PrivilegedOperationsServing {
                     }
                 }
             } catch {
-                completion(.failure(error))
+                let operationError = error
+                do {
+                    // A failed write does not mean the previous cached app
+                    // mode still matches macOS. Return the live state when it
+                    // remains readable so the UI never claims the wrong mode.
+                    completion(.success(try self.readSleepDisabled()))
+                } catch {
+                    completion(.failure(operationError))
+                }
             }
         }
     }
 
     func restoreSafeDefaults() {
-        setSleepDisabled(false) { _ in }
+        let completion = DispatchSemaphore(value: 0)
+        setSleepDisabled(false) { _ in
+            completion.signal()
+        }
+
+        // App termination follows immediately after this method returns.
+        // Wait for the helper to confirm the persistent setting instead of
+        // letting the process exit while the XPC request is still in flight.
+        _ = completion.wait(timeout: .now() + 3)
     }
 
     deinit {

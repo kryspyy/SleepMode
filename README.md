@@ -11,6 +11,9 @@ SleepMode is a local-only macOS menu-bar utility built with SwiftUI.
   `NSWorkspace.willSleepNotification` and `didWakeNotification` events. It uses
   `/usr/sbin/networksetup -setairportpower`, records ownership before turning
   Wi-Fi off, and restores Wi-Fi only when SleepMode made the change.
+- **Turn Bluetooth off when sleeping** follows the same ownership rule for the
+  Mac's Bluetooth controller, restoring it after wake only when SleepMode
+  turned it off.
 
 The app has no accounts, analytics, or network services.
 
@@ -47,9 +50,9 @@ for immediate locking.
 - Unless **Remember selected mode** is enabled, launch selects Normal.
 - The app reads the live `pmset` state instead of trusting a saved mode.
 
-For Wi-Fi, an ownership marker is written before power is turned off. Wake,
-launch, disabling the option, and app shutdown all retry restoration until
-macOS confirms Wi-Fi is on.
+For Wi-Fi and Bluetooth, separate ownership markers are written before power is
+turned off. Wake, launch, disabling either option, and app shutdown retry that
+radio's restoration until macOS confirms it is on.
 
 ## Signing
 
@@ -83,5 +86,5 @@ xcodebuild \
 
 The tests cover confirmed mode transitions, authorization failures,
 pending operations, stale callbacks, lid-close locking and rollback, sleep/wake
-Wi-Fi ownership, already-off Wi-Fi, delayed sleep callbacks, recovery retries,
-remembered mode, login-item failures, and shutdown recovery.
+Wi-Fi and Bluetooth ownership, already-off radios, delayed sleep callbacks,
+recovery retries, remembered mode, login-item failures, and shutdown recovery.

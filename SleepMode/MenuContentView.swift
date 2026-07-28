@@ -29,19 +29,18 @@ struct MenuContentView: View {
                 Text(appState.contextualText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(height: 16, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 12)
 
             Divider()
                 .padding(.vertical, 10)
 
-            wifiPreference
+            sleepRadioPreferences
 
             if let statusMessage = appState.statusMessage {
                 statusCallout(statusMessage)
-                    .padding(.top, 12)
+                    .padding(.top, 10)
             }
 
             Divider()
@@ -95,24 +94,41 @@ struct MenuContentView: View {
         appState.mode == .stayAwake ? .orange : .indigo
     }
 
-    private var wifiPreference: some View {
-        Toggle(
-            isOn: Binding(
-                get: { appState.turnWiFiOffDuringSleep },
-                set: appState.setWiFiSleepBehavior
-            )
-        ) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Turn Wi-Fi off when sleeping")
-                    .font(.callout)
+    private var sleepRadioPreferences: some View {
+        HStack(spacing: 8) {
+            Text("Off while asleep")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
-                Text("Restores automatically after wake.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Spacer(minLength: 2)
+
+            compactToggle(
+                "Wi-Fi",
+                isOn: Binding(
+                    get: { appState.turnWiFiOffDuringSleep },
+                    set: appState.setWiFiSleepBehavior
+                )
+            )
+
+            compactToggle(
+                "Bluetooth",
+                isOn: Binding(
+                    get: { appState.turnBluetoothOffDuringSleep },
+                    set: appState.setBluetoothSleepBehavior
+                )
+            )
         }
-        .toggleStyle(.switch)
-        .controlSize(.small)
+    }
+
+    private func compactToggle(
+        _ title: String,
+        isOn: Binding<Bool>
+    ) -> some View {
+        Toggle(title, isOn: isOn)
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .font(.caption)
+            .help("Turn \(title) off while this Mac is sleeping")
     }
 
     private func statusCallout(_ message: String) -> some View {

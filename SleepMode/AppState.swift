@@ -10,13 +10,15 @@ final class AppState: ObservableObject {
     @Published private(set) var isUpdatingLoginItem = false
     @Published var rememberSelectedMode: Bool
     @Published var turnWiFiOffDuringSleep: Bool
+    @Published var turnBluetoothOffDuringSleep: Bool
     @Published private(set) var statusMessage: String?
 
     private let sleepControl: SleepControlling
     private let lidMonitor: LidMonitoring
     private let powerMonitor: SystemPowerMonitoring
-    private let screenLocker: ScreenLocking
+    private let displayControl: DisplayControlling
     private let wifiControl: WiFiControlling
+    private let bluetoothControl: BluetoothControlling
     private let preferences: PreferencesServing
     private let loginItem: LoginItemControlling
     private let privilegedOperations: PrivilegedOperationsServing
@@ -31,8 +33,9 @@ final class AppState: ObservableObject {
         sleepControl: SleepControlling,
         lidMonitor: LidMonitoring,
         powerMonitor: SystemPowerMonitoring,
-        screenLocker: ScreenLocking,
+        displayControl: DisplayControlling,
         wifiControl: WiFiControlling,
+        bluetoothControl: BluetoothControlling,
         preferences: PreferencesServing,
         loginItem: LoginItemControlling,
         privilegedOperations: PrivilegedOperationsServing
@@ -40,13 +43,15 @@ final class AppState: ObservableObject {
         self.sleepControl = sleepControl
         self.lidMonitor = lidMonitor
         self.powerMonitor = powerMonitor
-        self.screenLocker = screenLocker
+        self.displayControl = displayControl
         self.wifiControl = wifiControl
+        self.bluetoothControl = bluetoothControl
         self.preferences = preferences
         self.loginItem = loginItem
         self.privilegedOperations = privilegedOperations
         rememberSelectedMode = preferences.rememberSelectedMode
         turnWiFiOffDuringSleep = preferences.turnWiFiOffDuringSleep
+        turnBluetoothOffDuringSleep = preferences.turnBluetoothOffDuringSleep
         launchAtLogin = loginItem.isEnabled
     }
 
@@ -58,8 +63,9 @@ final class AppState: ObservableObject {
             ),
             lidMonitor: LidMonitoringService(),
             powerMonitor: SystemPowerMonitor(),
-            screenLocker: ScreenLockService(),
+            displayControl: DisplayControlService(),
             wifiControl: WiFiService(),
+            bluetoothControl: BluetoothService(),
             preferences: PreferencesService(),
             loginItem: LoginItemService(),
             privilegedOperations: privilegedOperations
@@ -79,7 +85,7 @@ final class AppState: ObservableObject {
         case .stayAwake:
             switch privilegedOperations.closedLidCapability {
             case .systemManaged:
-                "Sleep is prevented; closing the lid locks your session."
+                "Sleep is prevented; macOS controls locking when the display turns off."
             case .unavailable:
                 "Idle sleep is prevented; macOS still controls lid sleep."
             }
@@ -93,6 +99,8 @@ final class AppState: ObservableObject {
         started = true
         shuttingDown = false
 
+        requestBluetoothAccess()
+
         powerMonitor.start(
             onSleep: { [weak self] in self?.systemWillSleep() },
             onWake: { [weak self] in self?.systemDidWake() }
@@ -101,7 +109,18 @@ final class AppState: ObservableObject {
         let initialMode: AppMode =
             rememberSelectedMode ? preferences.selectedMode : .normal
         recoverWiFiIfNeeded { [weak self] in
-            self?.selectMode(initialMode)
+            self?.recoverBluetoothIfNeeded { [weak self] in
+                self?.selectMode(initialMode)
+            }
+        }
+    }
+
+    private func requestBluetoothAccess() {
+        bluetoothControl.powerState { [weak self] result in
+            guard case let .failure(error) = result else { return }
+            self?.onMain {
+                self?.report(error)
+            }
         }
     }
 
@@ -147,6 +166,15 @@ final class AppState: ObservableObject {
         }
     }
 
+    func setBluetoothSleepBehavior(_ enabled: Bool) {
+        turnBluetoothOffDuringSleep = enabled
+        preferences.turnBluetoothOffDuringSleep = enabled
+
+        if !enabled {
+            recoverBluetoothIfNeeded()
+        }
+    }
+
     func setLaunchAtLogin(_ enabled: Bool) {
         guard !isUpdatingLoginItem else { return }
         statusMessage = nil
@@ -181,6 +209,7 @@ final class AppState: ObservableObject {
         sleepControl.restoreSafeDefaults()
         mode = .normal
         recoverWiFiIfNeeded()
+        recoverBluetoothIfNeeded()
         started = false
     }
 
@@ -305,33 +334,32 @@ final class AppState: ObservableObject {
         } else {
             guard lidWasClosedInStayAwake else { return }
             lidWasClosedInStayAwake = false
-        }
-
-        // Request the lock on close and once more on reopen. Newer macOS
-        // versions can ignore ScreenSaverEngine while the internal display is
-        // transitioning off; the reopen retry completes before normal use.
-        do {
-            try screenLocker.lock()
-        } catch {
-            report(error)
+            return
         }
 
         // `disablesleep 1` prevents system sleep but can also leave the display
-        // pipeline awake. Turn it off only on the closed transition; the lid
-        // reopening remains free to wake the display normally.
-        if closed {
-            do {
-                try screenLocker.turnDisplayOff()
-            } catch {
-                report(error)
-            }
+        // pipeline awake. Turn off the display and let the user's macOS Lock
+        // Screen setting decide when authentication becomes required.
+        do {
+            try displayControl.turnDisplayOff()
+        } catch {
+            report(error)
         }
     }
 
     private func systemWillSleep() {
-        guard turnWiFiOffDuringSleep else { return }
+        guard turnWiFiOffDuringSleep || turnBluetoothOffDuringSleep else { return }
         systemIsSleeping = true
 
+        if turnWiFiOffDuringSleep {
+            disableWiFiForSleep()
+        }
+        if turnBluetoothOffDuringSleep {
+            disableBluetoothForSleep()
+        }
+    }
+
+    private func disableWiFiForSleep() {
         wifiControl.powerState { [weak self] result in
             self?.onMain {
                 guard
@@ -347,6 +375,33 @@ final class AppState: ObservableObject {
                     self.wifiControl.setPower(false) { [weak self] changeResult in
                         self?.onMain {
                             self?.completeWiFiDisable(changeResult)
+                        }
+                    }
+                case .success(false):
+                    break
+                case .failure(let error):
+                    self.report(error)
+                }
+            }
+        }
+    }
+
+    private func disableBluetoothForSleep() {
+        bluetoothControl.powerState { [weak self] result in
+            self?.onMain {
+                guard
+                    let self,
+                    self.systemIsSleeping,
+                    self.turnBluetoothOffDuringSleep
+                else {
+                    return
+                }
+                switch result {
+                case .success(true):
+                    self.preferences.bluetoothWasDisabledByApp = true
+                    self.bluetoothControl.setPower(false) { [weak self] changeResult in
+                        self?.onMain {
+                            self?.completeBluetoothDisable(changeResult)
                         }
                     }
                 case .success(false):
@@ -382,9 +437,32 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func completeBluetoothDisable(_ result: Result<Bool, Error>) {
+        switch result {
+        case let .success(poweredOn):
+            if poweredOn {
+                preferences.bluetoothWasDisabledByApp = false
+                report(SleepModeError.operationFailed(
+                    "macOS did not turn Bluetooth off before sleep."
+                ))
+            }
+        case let .failure(error):
+            bluetoothControl.powerState { [weak self] stateResult in
+                self?.onMain {
+                    guard let self else { return }
+                    if case let .success(poweredOn) = stateResult, poweredOn {
+                        self.preferences.bluetoothWasDisabledByApp = false
+                    }
+                    self.report(error)
+                }
+            }
+        }
+    }
+
     private func systemDidWake() {
         systemIsSleeping = false
         recoverWiFiIfNeeded()
+        recoverBluetoothIfNeeded()
     }
 
     private func recoverWiFiIfNeeded(completion: (() -> Void)? = nil) {
@@ -410,6 +488,44 @@ final class AppState: ObservableObject {
                             case .success(false):
                                 self.report(SleepModeError.operationFailed(
                                     "macOS did not confirm Wi-Fi recovery."
+                                ))
+                            case .failure(let error):
+                                self.report(error)
+                            }
+                            completion?()
+                        }
+                    }
+                case .failure(let error):
+                    self.report(error)
+                    completion?()
+                }
+            }
+        }
+    }
+
+    private func recoverBluetoothIfNeeded(completion: (() -> Void)? = nil) {
+        guard preferences.bluetoothWasDisabledByApp else {
+            completion?()
+            return
+        }
+
+        bluetoothControl.powerState { [weak self] stateResult in
+            self?.onMain {
+                guard let self else { return }
+                switch stateResult {
+                case .success(true):
+                    self.preferences.bluetoothWasDisabledByApp = false
+                    completion?()
+                case .success(false):
+                    self.bluetoothControl.setPower(true) { [weak self] result in
+                        self?.onMain {
+                            guard let self else { return }
+                            switch result {
+                            case .success(true):
+                                self.preferences.bluetoothWasDisabledByApp = false
+                            case .success(false):
+                                self.report(SleepModeError.operationFailed(
+                                    "macOS did not confirm Bluetooth recovery."
                                 ))
                             case .failure(let error):
                                 self.report(error)

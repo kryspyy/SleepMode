@@ -32,12 +32,19 @@ protocol SystemPowerMonitoring: AnyObject {
     func stop()
 }
 
-protocol ScreenLocking: AnyObject {
-    func lock() throws
+protocol DisplayControlling: AnyObject {
     func turnDisplayOff() throws
 }
 
 protocol WiFiControlling: AnyObject {
+    func powerState(completion: @escaping (Result<Bool, Error>) -> Void)
+    func setPower(
+        _ poweredOn: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    )
+}
+
+protocol BluetoothControlling: AnyObject {
     func powerState(completion: @escaping (Result<Bool, Error>) -> Void)
     func setPower(
         _ poweredOn: Bool,
@@ -50,6 +57,8 @@ protocol PreferencesServing: AnyObject {
     var selectedMode: AppMode { get set }
     var turnWiFiOffDuringSleep: Bool { get set }
     var wifiWasDisabledByApp: Bool { get set }
+    var turnBluetoothOffDuringSleep: Bool { get set }
+    var bluetoothWasDisabledByApp: Bool { get set }
 }
 
 protocol LoginItemControlling: AnyObject {
