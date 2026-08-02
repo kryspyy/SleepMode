@@ -58,7 +58,7 @@ SleepMode is entirely local. It does not create an account, collect analytics, o
 ## Requirements
 
 - macOS 26.0 or later
-- A built and signed `SleepMode.app`
+- A built `SleepMode.app`
 
 ## Build from source
 
@@ -100,4 +100,4 @@ The test suite covers confirmed mode transitions, authorization failures, lid-cl
 
 ## License
 
-SleepMode is available under the [MIT License](LICENSE).
+SleepMode is available under the [MIT License](LICENSE). Codex wrote all of it, so pretending I’m precious about the source would be kinda weird.
