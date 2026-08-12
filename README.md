@@ -2,6 +2,12 @@
 
 SleepMode is a small, local-only macOS menu bar app for keeping your Mac awake when you need it and returning to normal sleep behavior when you do not.
 
+After coding agents, the usual move is to leave the laptop slightly open so a long-running job does not sleep when you walk away. Stay Awake is the closed-lid version of that. The Mac keeps running, the display turns off when you close the lid, and you do not have to carry a computer that is cracked open.
+
+![Software engineers before vs after agents](docs/software-engineers-before-vs-after-agents.png)
+
+[Cormac (@cormachayden_)](https://x.com/cormachayden_), *software engineers before vs after agents*
+
 ## Features
 
 - **Stay Awake** — prevent system sleep from the menu bar.
