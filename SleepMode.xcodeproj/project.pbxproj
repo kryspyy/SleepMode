@@ -110,6 +110,11 @@
 			path = SleepModeHelper;
 			sourceTree = "<group>";
 		};
+		A0000000000000000000000B /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -143,6 +148,7 @@
 				A00000000000000000000004 /* SleepMode */,
 				A00000000000000000000005 /* SleepModeTests */,
 				A0000000000000000000000A /* SleepModeHelper */,
+				A0000000000000000000000B /* Shared */,
 				A00000000000000000000009 /* local.sleepmode.pmsethelper.plist */,
 				A00000000000000000000003 /* Products */,
 			);
@@ -178,6 +184,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				A00000000000000000000004 /* SleepMode */,
+				A0000000000000000000000B /* Shared */,
 			);
 			name = SleepMode;
 			packageProductDependencies = (
@@ -223,6 +230,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				A0000000000000000000000A /* SleepModeHelper */,
+				A0000000000000000000000B /* Shared */,
 			);
 			name = SleepModeHelper;
 			packageProductDependencies = (
@@ -459,9 +467,8 @@
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = local.sleepmode.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_OBJC_BRIDGING_HEADER = SleepMode/AuthorizedHelperInstall.h;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -485,9 +492,8 @@
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = local.sleepmode.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_OBJC_BRIDGING_HEADER = SleepMode/AuthorizedHelperInstall.h;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -506,7 +512,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = local.sleepmode.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SleepMode.app/Contents/MacOS/SleepMode";
 			};
@@ -526,7 +532,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = local.sleepmode.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SleepMode.app/Contents/MacOS/SleepMode";
 			};
@@ -540,7 +546,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = local.sleepmode.pmsethelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
-				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
@@ -554,7 +560,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = local.sleepmode.pmsethelper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
-				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;

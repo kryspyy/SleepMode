@@ -55,12 +55,18 @@ final class MockSleepControl: SleepControlling {
         restoreCallCount += 1
         isPreventingSleep = false
     }
+
+    func restoreSafeDefaults(completion: @escaping () -> Void) {
+        restoreSafeDefaults()
+        completion()
+    }
 }
 
 final class MockLidMonitor: LidMonitoring {
     private(set) var isMonitoring = false
     private var onChange: ((Bool) -> Void)?
     var startError: Error?
+    var initialClosed = false
     private(set) var startCallCount = 0
     private(set) var stopCallCount = 0
 
@@ -69,6 +75,7 @@ final class MockLidMonitor: LidMonitoring {
         if let startError { throw startError }
         isMonitoring = true
         self.onChange = onChange
+        onChange(initialClosed)
     }
 
     func stop() {
@@ -113,13 +120,17 @@ final class MockDisplayControl: DisplayControlling {
     }
 }
 
-final class MockWiFiControl: WiFiControlling {
+final class MockWiFiControl: RadioControlling {
     var isPoweredOn: Bool
     var failWhenSetting: Bool?
     var automaticallyCompletesPowerState = true
+    var automaticallyCompletesSetPower = true
     private(set) var requestedPowerStates: [Bool] = []
     private var pendingPowerStateCompletions: [
         (Result<Bool, Error>) -> Void
+    ] = []
+    private var pendingSetPower: [
+        (Bool, (Result<Bool, Error>) -> Void)
     ] = []
 
     init(isPoweredOn: Bool = true) {
@@ -143,6 +154,23 @@ final class MockWiFiControl: WiFiControlling {
         _ poweredOn: Bool,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
+        guard automaticallyCompletesSetPower else {
+            pendingSetPower.append((poweredOn, completion))
+            return
+        }
+        completeSetPower(poweredOn, completion: completion)
+    }
+
+    func completeNextSetPower() {
+        guard !pendingSetPower.isEmpty else { return }
+        let (poweredOn, completion) = pendingSetPower.removeFirst()
+        completeSetPower(poweredOn, completion: completion)
+    }
+
+    private func completeSetPower(
+        _ poweredOn: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
         requestedPowerStates.append(poweredOn)
         if failWhenSetting == poweredOn {
             completion(.failure(SleepModeError.operationFailed("Wi-Fi test failure")))
@@ -153,14 +181,18 @@ final class MockWiFiControl: WiFiControlling {
     }
 }
 
-final class MockBluetoothControl: BluetoothControlling {
+final class MockBluetoothControl: RadioControlling {
     var isPoweredOn: Bool
     var failWhenSetting: Bool?
     var automaticallyCompletesPowerState = true
+    var automaticallyCompletesSetPower = true
     private(set) var requestedPowerStates: [Bool] = []
     private(set) var powerStateCallCount = 0
     private var pendingPowerStateCompletions: [
         (Result<Bool, Error>) -> Void
+    ] = []
+    private var pendingSetPower: [
+        (Bool, (Result<Bool, Error>) -> Void)
     ] = []
 
     init(isPoweredOn: Bool = true) {
@@ -182,6 +214,23 @@ final class MockBluetoothControl: BluetoothControlling {
     }
 
     func setPower(
+        _ poweredOn: Bool,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        guard automaticallyCompletesSetPower else {
+            pendingSetPower.append((poweredOn, completion))
+            return
+        }
+        completeSetPower(poweredOn, completion: completion)
+    }
+
+    func completeNextSetPower() {
+        guard !pendingSetPower.isEmpty else { return }
+        let (poweredOn, completion) = pendingSetPower.removeFirst()
+        completeSetPower(poweredOn, completion: completion)
+    }
+
+    private func completeSetPower(
         _ poweredOn: Bool,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
@@ -224,7 +273,6 @@ final class MockLoginItem: LoginItemControlling {
 }
 
 final class MockPrivilegedOperations: PrivilegedOperationsServing {
-    var closedLidCapability: ClosedLidCapability = .unavailable(reason: "Test")
     var isSleepDisabled = false
     var setSleepDisabledError: Error?
     private(set) var requestedSleepDisabledStates: [Bool] = []
@@ -246,6 +294,11 @@ final class MockPrivilegedOperations: PrivilegedOperationsServing {
     func restoreSafeDefaults() {
         restoreCallCount += 1
         isSleepDisabled = false
+    }
+
+    func restoreSafeDefaults(completion: @escaping () -> Void) {
+        restoreSafeDefaults()
+        completion()
     }
 }
 
@@ -288,8 +341,7 @@ func makeTestSystem(
             wifiControl: wifi,
             bluetoothControl: bluetooth,
             preferences: preferences,
-            loginItem: loginItem,
-            privilegedOperations: privileged
+            loginItem: loginItem
         ),
         sleep: sleep,
         lid: lid,

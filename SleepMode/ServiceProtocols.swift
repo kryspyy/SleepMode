@@ -19,6 +19,7 @@ protocol SleepControlling: AnyObject {
         completion: @escaping (Result<Bool, Error>) -> Void
     )
     func restoreSafeDefaults()
+    func restoreSafeDefaults(completion: @escaping () -> Void)
 }
 
 protocol LidMonitoring: AnyObject {
@@ -36,15 +37,7 @@ protocol DisplayControlling: AnyObject {
     func turnDisplayOff() throws
 }
 
-protocol WiFiControlling: AnyObject {
-    func powerState(completion: @escaping (Result<Bool, Error>) -> Void)
-    func setPower(
-        _ poweredOn: Bool,
-        completion: @escaping (Result<Bool, Error>) -> Void
-    )
-}
-
-protocol BluetoothControlling: AnyObject {
+protocol RadioControlling: AnyObject {
     func powerState(completion: @escaping (Result<Bool, Error>) -> Void)
     func setPower(
         _ poweredOn: Bool,
@@ -69,16 +62,11 @@ protocol LoginItemControlling: AnyObject {
     )
 }
 
-enum ClosedLidCapability: Equatable {
-    case systemManaged
-    case unavailable(reason: String)
-}
-
 protocol PrivilegedOperationsServing: AnyObject {
-    var closedLidCapability: ClosedLidCapability { get }
     func setSleepDisabled(
         _ disabled: Bool,
         completion: @escaping (Result<Bool, Error>) -> Void
     )
     func restoreSafeDefaults()
+    func restoreSafeDefaults(completion: @escaping () -> Void)
 }

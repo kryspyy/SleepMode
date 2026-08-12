@@ -1,7 +1,7 @@
 import CoreWLAN
 import Foundation
 
-final class WiFiService: WiFiControlling {
+final class WiFiService: RadioControlling {
     private let executableURL = URL(fileURLWithPath: "/usr/sbin/networksetup")
     private let queue = DispatchQueue(
         label: "local.sleepmode.wifi",
@@ -49,17 +49,12 @@ final class WiFiService: WiFiControlling {
             "-getairportpower",
             interfaceName,
         ])
-        let normalized = output.lowercased()
-
-        if normalized.contains(": on") {
-            return true
+        guard let state = wifiPoweredOn(from: output) else {
+            throw SleepModeError.operationFailed(
+                "Could not determine the Wi-Fi power state."
+            )
         }
-        if normalized.contains(": off") {
-            return false
-        }
-        throw SleepModeError.operationFailed(
-            "Could not determine the Wi-Fi power state."
-        )
+        return state
     }
 
     private func wifiInterfaceName() throws -> String {
@@ -89,48 +84,41 @@ final class WiFiService: WiFiControlling {
         throw SleepModeError.unavailable("No Wi-Fi interface is available.")
     }
 
-    @discardableResult
     private func runNetworkSetup(_ arguments: [String]) throws -> String {
-        guard FileManager.default.isExecutableFile(atPath: executableURL.path) else {
+        do {
+            return try ProcessRunner.run(
+                executableURL: executableURL,
+                arguments: arguments
+            )
+        } catch ProcessRunnerError.notExecutable {
             throw SleepModeError.unavailable(
                 "The macOS network configuration service is unavailable."
             )
-        }
-
-        let process = Process()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.executableURL = executableURL
-        process.arguments = arguments
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
+        } catch let ProcessRunnerError.launchFailed(message) {
             throw SleepModeError.operationFailed(
-                "Could not change Wi-Fi power: \(error.localizedDescription)"
+                "Could not change Wi-Fi power: \(message)"
             )
-        }
-
-        let output = String(
-            data: outputPipe.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        ) ?? ""
-        let errorOutput = String(
-            data: errorPipe.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        ) ?? ""
-
-        guard process.terminationStatus == 0 else {
-            let detail = errorOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch let ProcessRunnerError.nonzeroExit(_, detail) {
             throw SleepModeError.operationFailed(
                 detail.isEmpty
                     ? "The macOS network configuration command failed."
                     : "Could not change Wi-Fi power: \(detail)"
             )
+        } catch {
+            throw SleepModeError.operationFailed(
+                "Could not change Wi-Fi power: \(error.localizedDescription)"
+            )
         }
-        return output
     }
+}
+
+func wifiPoweredOn(from networksetupOutput: String) -> Bool? {
+    let normalized = networksetupOutput.lowercased()
+    if normalized.contains(": on") {
+        return true
+    }
+    if normalized.contains(": off") {
+        return false
+    }
+    return nil
 }

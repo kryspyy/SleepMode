@@ -24,7 +24,7 @@ SleepMode lives in the menu bar. If you have a built `SleepMode.app`:
 4. Choose **Stay Awake** or **Normal**.
 5. Use the **Wi-Fi** and **Bluetooth** switches if you want those radios turned off while the Mac sleeps.
 
-The first time you choose **Stay Awake**, macOS asks for administrator authorization to install SleepMode's helper. This is a one-time setup; changing modes later does not require another password prompt.
+The first time you choose **Stay Awake**, macOS asks for administrator authorization to register SleepMode's helper. This is a one-time setup; changing modes later does not require another password prompt. If macOS asks you to allow the helper in **System Settings → Login Items & Extensions → Allow in the Background**, approve SleepMode there.
 
 ## Modes
 
@@ -92,7 +92,7 @@ The test suite covers confirmed mode transitions, authorization failures, lid-cl
 ## Technical overview
 
 - The menu bar UI is built with SwiftUI `MenuBarExtra`.
-- Stay Awake uses a small privileged helper to apply the fixed `pmset` sleep-setting changes required by macOS. The helper is installed once in macOS's protected system locations through the standard administrator authorization flow.
+- Stay Awake uses a small privileged helper to apply the fixed `pmset` sleep-setting changes required by macOS. The helper is registered once with `SMAppService` and runs from the app bundle. An older copy installed in `/Library/PrivilegedHelperTools` is removed the first time the new helper starts.
 - Lid changes are observed through public IOKit notifications with a live-state polling fallback. The display is turned off with macOS's `/usr/bin/pmset displaysleepnow` command.
 - Sleep and wake events come from `NSWorkspace`. Wi-Fi uses CoreWLAN and `networksetup`; Bluetooth uses `IOBluetooth`.
 - System operations run away from the main UI thread, and state changes are confirmed from the live system before the UI is updated.

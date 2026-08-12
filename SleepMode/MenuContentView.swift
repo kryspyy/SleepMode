@@ -39,8 +39,11 @@ struct MenuContentView: View {
             sleepRadioPreferences
 
             if let statusMessage = appState.statusMessage {
-                statusCallout(statusMessage)
-                    .padding(.top, 10)
+                StatusCallout(
+                    message: statusMessage,
+                    onDismiss: appState.dismissStatusMessage
+                )
+                .padding(.top, 10)
             }
 
             Divider()
@@ -129,19 +132,6 @@ struct MenuContentView: View {
             .controlSize(.mini)
             .font(.caption)
             .help("Turn \(title) off while this Mac is sleeping")
-    }
-
-    private func statusCallout(_ message: String) -> some View {
-        Label(message, systemImage: "exclamationmark.triangle.fill")
-            .font(.caption)
-            .foregroundStyle(.orange)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(9)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                Color.orange.opacity(0.1),
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-            )
     }
 
     private func presentSettings() {

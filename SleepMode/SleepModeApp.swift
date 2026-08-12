@@ -25,8 +25,19 @@ struct SleepModeApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra("SleepMode", systemImage: appState.menuBarSymbol) {
+        MenuBarExtra {
             MenuContentView(appState: appState)
+        } label: {
+            ZStack {
+                ForEach(AppMode.allCases) { mode in
+                    Image(systemName: mode.symbolName)
+                        .resizable()
+                        .scaledToFit()
+                        .opacity(appState.mode == mode ? 1 : 0)
+                }
+            }
+            .frame(width: 16, height: 16)
+            .fixedSize()
         }
         .menuBarExtraStyle(.window)
 

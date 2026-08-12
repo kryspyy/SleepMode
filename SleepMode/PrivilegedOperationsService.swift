@@ -1,21 +1,15 @@
 import Foundation
-import Security
+import ServiceManagement
 
 final class PrivilegedOperationsService: PrivilegedOperationsServing {
-    let closedLidCapability: ClosedLidCapability = .systemManaged
-
-    private static let helperServiceName = "local.sleepmode.pmsethelper"
-    private static let installedHelperPath =
-        "/Library/PrivilegedHelperTools/local.sleepmode.pmsethelper"
-    private static let installedPlistPath =
-        "/Library/LaunchDaemons/local.sleepmode.pmsethelper.plist"
+    private static let helperServiceName = "local.sleepmode.helper"
+    private static let helperPlistName = "local.sleepmode.pmsethelper.plist"
 
     private let queue = DispatchQueue(
         label: "local.sleepmode.pmset",
         qos: .userInitiated
     )
     private var helperConnection: NSXPCConnection?
-    private var authorization: AuthorizationRef?
 
     func setSleepDisabled(
         _ disabled: Bool,
@@ -34,140 +28,111 @@ final class PrivilegedOperationsService: PrivilegedOperationsServing {
                     completion(.success(disabled))
                     return
                 }
+            } catch {
+                completion(.failure(error))
+                return
+            }
 
-                try self.ensureHelperIsInstalled()
-                self.runHelperPMSet(disabled: disabled) { result in
-                    self.queue.async {
-                        do {
-                            try result.get()
-                            let confirmed = try self.waitForConfirmedState(disabled)
-                            completion(.success(confirmed))
-                        } catch {
-                            completion(.failure(error))
+            self.ensureHelperIsRegistered { result in
+                self.queue.async {
+                    switch result {
+                    case .success:
+                        self.runHelperPMSet(disabled: disabled) { pmsetResult in
+                            self.queue.async {
+                                do {
+                                    try pmsetResult.get()
+                                    let confirmed = try self.waitForConfirmedState(disabled)
+                                    completion(.success(confirmed))
+                                } catch {
+                                    completion(.failure(error))
+                                }
+                            }
                         }
+                    case let .failure(error):
+                        self.completeWithLiveState(
+                            operationError: error,
+                            completion: completion
+                        )
                     }
                 }
-            } catch {
-                let operationError = error
-                do {
-                    // A failed write does not mean the previous cached app
-                    // mode still matches macOS. Return the live state when it
-                    // remains readable so the UI never claims the wrong mode.
-                    completion(.success(try self.readSleepDisabled()))
-                } catch {
-                    completion(.failure(operationError))
-                }
             }
+        }
+    }
+
+    private func completeWithLiveState(
+        operationError: Error,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        do {
+            completion(.success(try readSleepDisabled()))
+        } catch {
+            completion(.failure(operationError))
         }
     }
 
     func restoreSafeDefaults() {
         let completion = DispatchSemaphore(value: 0)
-        setSleepDisabled(false) { _ in
+        restoreSafeDefaults {
             completion.signal()
         }
-
-        // App termination follows immediately after this method returns.
-        // Wait for the helper to confirm the persistent setting instead of
-        // letting the process exit while the XPC request is still in flight.
         _ = completion.wait(timeout: .now() + 3)
+    }
+
+    func restoreSafeDefaults(completion: @escaping () -> Void) {
+        setSleepDisabled(false) { _ in
+            completion()
+        }
     }
 
     deinit {
         helperConnection?.invalidate()
-        if let authorization {
-            AuthorizationFree(authorization, [.destroyRights])
-        }
     }
 
-    private func ensureHelperIsInstalled() throws {
-        if FileManager.default.isExecutableFile(
-            atPath: Self.installedHelperPath
-        ), FileManager.default.fileExists(atPath: Self.installedPlistPath) {
+    private func ensureHelperIsRegistered(
+        completion: @escaping (Result<Void, Error>) -> Void
+    ) {
+        let service = SMAppService.daemon(plistName: Self.helperPlistName)
+        switch service.status {
+        case .enabled:
+            completion(.success(()))
             return
+        case .requiresApproval:
+            completion(.failure(approvalRequiredError()))
+            return
+        default:
+            break
         }
 
-        guard let helperURL = Bundle.main.url(
-            forAuxiliaryExecutable: "SleepModeHelper"
-        ) ?? bundledHelperURL else {
-            throw SleepModeError.unavailable(
-                "The bundled SleepMode helper is missing."
-            )
-        }
-
-        let authorization = try authorizationReference(
-            executablePath: helperURL.path
-        )
-        let status = helperURL.path.withCString { helperPath in
-            SMInstallPrivilegedHelper(
-                authorization,
-                helperPath,
-                getuid()
-            )
-        }
-        guard status == errAuthorizationSuccess else {
-            throw authorizationError(status)
-        }
-
-        guard FileManager.default.isExecutableFile(
-            atPath: Self.installedHelperPath
-        ), FileManager.default.fileExists(atPath: Self.installedPlistPath) else {
-            throw SleepModeError.operationFailed(
-                "macOS did not complete the SleepMode helper installation."
-            )
-        }
-    }
-
-    private var bundledHelperURL: URL? {
-        let url = Bundle.main.bundleURL
-            .appendingPathComponent(
-                "Contents/Library/HelperTools/SleepModeHelper"
-            )
-        return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
-    }
-
-    private func authorizationReference(
-        executablePath: String
-    ) throws -> AuthorizationRef {
-        if let authorization {
-            return authorization
-        }
-
-        var createdAuthorization: AuthorizationRef?
-        let status = kAuthorizationRightExecute.withCString { rightPointer in
-            executablePath.withCString { pathPointer in
-                var item = AuthorizationItem(
-                    name: rightPointer,
-                    valueLength: strlen(pathPointer) + 1,
-                    value: UnsafeMutableRawPointer(mutating: pathPointer),
-                    flags: 0
-                )
-                return withUnsafeMutablePointer(to: &item) { itemPointer in
-                    var rights = AuthorizationRights(
-                        count: 1,
-                        items: itemPointer
-                    )
-                    return AuthorizationCreate(
-                        &rights,
-                        nil,
-                        [.interactionAllowed, .extendRights, .preAuthorize],
-                        &createdAuthorization
-                    )
+        DispatchQueue.main.async {
+            do {
+                try service.register()
+                if service.status == .requiresApproval {
+                    completion(.failure(self.approvalRequiredError()))
+                    return
                 }
+                completion(.success(()))
+            } catch {
+                completion(.failure(SleepModeError.operationFailed(
+                    "Could not register the SleepMode helper: \(error.localizedDescription)"
+                )))
             }
         }
+    }
 
-        guard status == errAuthorizationSuccess, let createdAuthorization else {
-            throw authorizationError(status)
+    private func approvalRequiredError() -> SleepModeError {
+        DispatchQueue.main.async {
+            SMAppService.openSystemSettingsLoginItems()
         }
-        authorization = createdAuthorization
-        return createdAuthorization
+        return .operationFailed(
+            "Approve SleepMode in System Settings → Login Items & Extensions → Allow in the Background."
+        )
     }
 
     private func runHelperPMSet(
         disabled: Bool,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
+        let once = OnceReply(completion)
         let connection = helperConnection ?? makeHelperConnection()
         helperConnection = connection
 
@@ -175,12 +140,12 @@ final class PrivilegedOperationsService: PrivilegedOperationsServing {
             self?.queue.async {
                 self?.helperConnection?.invalidate()
                 self?.helperConnection = nil
-                completion(.failure(SleepModeError.operationFailed(
+                once.send(.failure(SleepModeError.operationFailed(
                     "The SleepMode helper did not respond: \(error.localizedDescription)"
                 )))
             }
         }) as? SleepModePrivilegedHelperProtocol else {
-            completion(.failure(SleepModeError.unavailable(
+            once.send(.failure(SleepModeError.unavailable(
                 "The SleepMode helper is unavailable."
             )))
             return
@@ -188,9 +153,9 @@ final class PrivilegedOperationsService: PrivilegedOperationsServing {
 
         helper.setSleepDisabled(disabled) { succeeded, message in
             if succeeded {
-                completion(.success(()))
+                once.send(.success(()))
             } else {
-                completion(.failure(SleepModeError.operationFailed(
+                once.send(.failure(SleepModeError.operationFailed(
                     message ?? "The SleepMode helper could not change the sleep setting."
                 )))
             }
@@ -216,25 +181,6 @@ final class PrivilegedOperationsService: PrivilegedOperationsServing {
         return connection
     }
 
-    private func authorizationError(_ status: OSStatus) -> SleepModeError {
-        switch status {
-        case errAuthorizationCanceled:
-            return .operationFailed("Administrator authorization was cancelled.")
-        case errAuthorizationDenied:
-            return .operationFailed("Administrator authorization was denied.")
-        case errAuthorizationInternal:
-            return .operationFailed(
-                "The SleepMode helper could not be installed."
-            )
-        default:
-            let detail = SecCopyErrorMessageString(status, nil) as String?
-            return .operationFailed(
-                detail.map { "Administrator authorization failed: \($0)" }
-                    ?? "Administrator authorization failed (\(status))."
-            )
-        }
-    }
-
     private func waitForConfirmedState(_ expected: Bool) throws -> Bool {
         for _ in 0..<30 {
             if try readSleepDisabled() == expected {
@@ -249,10 +195,23 @@ final class PrivilegedOperationsService: PrivilegedOperationsServing {
     }
 
     private func readSleepDisabled() throws -> Bool {
-        let output = try runProcess(
-            executableURL: URL(fileURLWithPath: "/usr/bin/pmset"),
-            arguments: ["-g"]
-        )
+        let output: String
+        do {
+            output = try ProcessRunner.run(
+                executableURL: URL(fileURLWithPath: "/usr/bin/pmset"),
+                arguments: ["-g"]
+            )
+        } catch let ProcessRunnerError.launchFailed(message) {
+            throw SleepModeError.operationFailed("Could not run pmset: \(message)")
+        } catch let ProcessRunnerError.nonzeroExit(_, detail) {
+            throw SleepModeError.operationFailed(
+                detail.isEmpty ? "pmset failed." : "pmset failed: \(detail)"
+            )
+        } catch {
+            throw SleepModeError.operationFailed(
+                "Could not run pmset: \(error.localizedDescription)"
+            )
+        }
         guard let state = sleepDisabledValue(from: output) else {
             throw SleepModeError.operationFailed(
                 "Could not read the current macOS sleep setting."
@@ -260,46 +219,23 @@ final class PrivilegedOperationsService: PrivilegedOperationsServing {
         }
         return state
     }
+}
 
-    private func runProcess(
-        executableURL: URL,
-        arguments: [String]
-    ) throws -> String {
-        let process = Process()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.executableURL = executableURL
-        process.arguments = arguments
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
+private final class OnceReply {
+    private let lock = NSLock()
+    private var completion: ((Result<Void, Error>) -> Void)?
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            throw SleepModeError.operationFailed(
-                "Could not run pmset: \(error.localizedDescription)"
-            )
-        }
-
-        let output = String(
-            data: outputPipe.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        ) ?? ""
-        let errorOutput = String(
-            data: errorPipe.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        ) ?? ""
-
-        guard process.terminationStatus == 0 else {
-            let detail = errorOutput.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw SleepModeError.operationFailed(
-                detail.isEmpty ? "pmset failed." : "pmset failed: \(detail)"
-            )
-        }
-        return output
+    init(_ completion: @escaping (Result<Void, Error>) -> Void) {
+        self.completion = completion
     }
 
+    func send(_ result: Result<Void, Error>) {
+        lock.lock()
+        let completion = self.completion
+        self.completion = nil
+        lock.unlock()
+        completion?(result)
+    }
 }
 
 func sleepDisabledValue(from pmsetOutput: String) -> Bool? {

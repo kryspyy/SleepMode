@@ -36,6 +36,12 @@ final class AppStateTests: XCTestCase {
         XCTAssertNil(sleepDisabledValue(from: "Currently in use:\n sleep 1"))
     }
 
+    func testWiFiPowerOutputParsing() {
+        XCTAssertEqual(wifiPoweredOn(from: "Wi-Fi Power (en0): On"), true)
+        XCTAssertEqual(wifiPoweredOn(from: "Wi-Fi Power (en0): Off"), false)
+        XCTAssertNil(wifiPoweredOn(from: "unexpected"))
+    }
+
     func testSleepControlUsesPrivilegedPersistentSleepSetting() {
         let privileged = MockPrivilegedOperations()
         let sleepControl = SleepControlService(privilegedOperations: privileged)
@@ -166,6 +172,76 @@ final class AppStateTests: XCTestCase {
         system.state.selectMode(.normal)
         system.lid.emit(closed: true)
         XCTAssertEqual(system.display.turnDisplayOffCallCount, 1)
+    }
+
+    func testStayAwakeDoesNotTurnDisplayOffWhenLidIsAlreadyClosed() {
+        let system = makeTestSystem()
+        system.lid.initialClosed = true
+        system.state.start()
+        system.state.selectMode(.stayAwake)
+
+        XCTAssertEqual(system.display.turnDisplayOffCallCount, 0)
+
+        system.lid.emit(closed: false)
+        XCTAssertEqual(system.display.turnDisplayOffCallCount, 0)
+
+        system.lid.emit(closed: true)
+        XCTAssertEqual(system.display.turnDisplayOffCallCount, 1)
+    }
+
+    func testQueuedModeChangeAppliesAfterInFlightRequest() {
+        let system = makeTestSystem()
+        system.state.start()
+        system.sleep.automaticallyCompletes = false
+
+        system.state.selectMode(.stayAwake)
+        system.state.selectMode(.normal)
+
+        XCTAssertTrue(system.state.isChangingMode)
+        XCTAssertEqual(system.state.pendingMode, .normal)
+        XCTAssertFalse(system.lid.isMonitoring)
+
+        system.sleep.completeNextChange()
+        XCTAssertEqual(system.state.mode, .stayAwake)
+        XCTAssertEqual(system.state.pendingMode, .normal)
+        XCTAssertFalse(system.lid.isMonitoring)
+
+        system.sleep.completeNextChange()
+        XCTAssertEqual(system.state.mode, .normal)
+        XCTAssertFalse(system.state.isChangingMode)
+        XCTAssertFalse(system.lid.isMonitoring)
+        XCTAssertFalse(system.sleep.isPreventingSleep)
+    }
+
+    func testDelayedWiFiDisableAfterWakeRestoresRadio() {
+        let system = makeTestSystem { preferences in
+            preferences.turnWiFiOffDuringSleep = true
+        }
+        system.state.start()
+        system.wifi.automaticallyCompletesSetPower = false
+
+        system.power.emitSleep()
+        XCTAssertTrue(system.preferences.wifiWasDisabledByApp)
+        XCTAssertTrue(system.wifi.requestedPowerStates.isEmpty)
+
+        system.power.emitWake()
+        system.wifi.automaticallyCompletesSetPower = true
+        system.wifi.completeNextSetPower()
+
+        XCTAssertTrue(system.wifi.isPoweredOn)
+        XCTAssertEqual(system.wifi.requestedPowerStates, [false, true])
+        XCTAssertFalse(system.preferences.wifiWasDisabledByApp)
+    }
+
+    func testDismissStatusMessageClearsError() {
+        let system = makeTestSystem()
+        system.state.start()
+        system.sleep.preventError = SleepModeError.operationFailed("No assertion")
+        system.state.selectMode(.stayAwake)
+
+        XCTAssertEqual(system.state.statusMessage, "No assertion")
+        system.state.dismissStatusMessage()
+        XCTAssertNil(system.state.statusMessage)
     }
 
     func testSystemSleepTurnsWiFiOffAndWakeRestoresOnlyAppChange() {

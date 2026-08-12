@@ -31,8 +31,11 @@ struct SettingsView: View {
             .scrollDisabled(true)
 
             if let statusMessage = appState.statusMessage {
-                statusCallout(statusMessage)
-                    .padding(.horizontal, 20)
+                StatusCallout(
+                    message: statusMessage,
+                    onDismiss: appState.dismissStatusMessage
+                )
+                .padding(.horizontal, 20)
             }
 
             Text("Built by Kryspyy")
@@ -76,18 +79,5 @@ struct SettingsView: View {
                 .disabled(isUpdating)
         }
         .padding(.vertical, 3)
-    }
-
-    private func statusCallout(_ message: String) -> some View {
-        Label(message, systemImage: "exclamationmark.triangle.fill")
-            .font(.caption)
-            .foregroundStyle(.orange)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(9)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                Color.orange.opacity(0.1),
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-            )
     }
 }

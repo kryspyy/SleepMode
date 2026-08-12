@@ -2,7 +2,9 @@ import Foundation
 import IOBluetooth
 import ObjectiveC.runtime
 
-final class BluetoothService: BluetoothControlling {
+final class BluetoothService: RadioControlling {
+    // IOBluetoothHostController.setPowerState: is SPI. There is no public
+    // replacement for toggling Bluetooth power.
     private typealias SetPowerStateFunction = @convention(c) (
         AnyObject,
         Selector,

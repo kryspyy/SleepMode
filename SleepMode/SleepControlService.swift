@@ -33,4 +33,11 @@ final class SleepControlService: SleepControlling {
         }
         privilegedOperations.restoreSafeDefaults()
     }
+
+    func restoreSafeDefaults(completion: @escaping () -> Void) {
+        stateLock.withLock {
+            cachedState = false
+        }
+        privilegedOperations.restoreSafeDefaults(completion: completion)
+    }
 }
