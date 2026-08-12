@@ -72,6 +72,22 @@ final class AppStateTests: XCTestCase {
         XCTAssertFalse(sleepControl.isPreventingSleep)
     }
 
+    func testMenuBarSymbolTracksConfirmedMode() {
+        let system = makeTestSystem()
+        system.state.start()
+
+        XCTAssertEqual(system.state.menuBarSymbol, AppMode.normal.symbolName)
+
+        system.state.selectMode(.stayAwake)
+
+        XCTAssertEqual(system.state.mode, .stayAwake)
+        XCTAssertEqual(system.state.menuBarSymbol, AppMode.stayAwake.symbolName)
+
+        system.state.selectMode(.normal)
+
+        XCTAssertEqual(system.state.menuBarSymbol, AppMode.normal.symbolName)
+    }
+
     func testStayAwakeTransitionConfirmsAssertionAndStartsLidMonitoring() {
         let system = makeTestSystem()
         system.state.start()

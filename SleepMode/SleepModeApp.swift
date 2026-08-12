@@ -28,16 +28,7 @@ struct SleepModeApp: App {
         MenuBarExtra {
             MenuContentView(appState: appState)
         } label: {
-            ZStack {
-                ForEach(AppMode.allCases) { mode in
-                    Image(systemName: mode.symbolName)
-                        .resizable()
-                        .scaledToFit()
-                        .opacity(appState.mode == mode ? 1 : 0)
-                }
-            }
-            .frame(width: 16, height: 16)
-            .fixedSize()
+            MenuBarIcon(appState: appState)
         }
         .menuBarExtraStyle(.window)
 
@@ -46,5 +37,48 @@ struct SleepModeApp: App {
         }
         .defaultSize(width: 420, height: 224)
         .windowResizability(.contentSize)
+    }
+}
+
+private struct MenuBarIcon: View {
+    @ObservedObject var appState: AppState
+
+    var body: some View {
+        Image(nsImage: MenuBarStatusImage.make(symbolName: appState.menuBarSymbol))
+            .frame(width: MenuBarStatusImage.pointSize, height: MenuBarStatusImage.pointSize)
+            .fixedSize()
+            .accessibilityLabel(appState.mode.title)
+    }
+}
+
+private enum MenuBarStatusImage {
+    static let pointSize: CGFloat = 18
+
+    static func make(symbolName: String) -> NSImage {
+        let size = NSSize(width: pointSize, height: pointSize)
+        let symbol = NSImage(
+            systemSymbolName: symbolName,
+            accessibilityDescription: nil
+        )?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        )
+        let image = NSImage(size: size, flipped: false) { rect in
+            guard let symbol else { return false }
+            let glyphSize = symbol.size
+            symbol.draw(
+                in: NSRect(
+                    x: rect.midX - glyphSize.width / 2,
+                    y: rect.midY - glyphSize.height / 2,
+                    width: glyphSize.width,
+                    height: glyphSize.height
+                ),
+                from: .zero,
+                operation: .sourceOver,
+                fraction: 1
+            )
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 }
