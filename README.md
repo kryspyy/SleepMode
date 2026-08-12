@@ -19,10 +19,11 @@ SleepMode is a small, local-only macOS menu bar app for keeping your Mac awake w
 Download `SleepMode.app` from [Releases](https://github.com/kryspyy/SleepMode/releases). The published build is **unsigned**: there is no Developer ID or notarization, so macOS Gatekeeper will warn when you open it.
 
 1. Unzip the release and move `SleepMode.app` to `/Applications`.
-2. Open SleepMode with Control-click → **Open**. You can also run `xattr -cr /Applications/SleepMode.app` in Terminal, then open it normally.
-3. Click the SleepMode icon in the menu bar.
-4. Choose **Stay Awake** or **Normal**.
-5. Use the **Wi-Fi** and **Bluetooth** switches if you want those radios turned off while the Mac sleeps.
+2. Open SleepMode. When macOS says it was not opened, click **Done**.
+3. Open **System Settings → Privacy & Security**, scroll to **Security**, and click **Open Anyway**.
+4. Click the SleepMode icon in the menu bar.
+5. Choose **Stay Awake** or **Normal**.
+6. Use the **Wi-Fi** and **Bluetooth** switches if you want those radios turned off while the Mac sleeps.
 
 The first time you choose **Stay Awake**, macOS asks for administrator authorization to register SleepMode's helper. This is a one-time setup. Changing modes later does not require another password prompt. If macOS asks you to allow the helper in **System Settings → Login Items & Extensions → Allow in the Background**, approve SleepMode there.
 
