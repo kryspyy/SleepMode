@@ -100,4 +100,4 @@ The test suite covers confirmed mode transitions, authorization failures, lid-cl
 
 ## License
 
-SleepMode is available under the [MIT License](LICENSE). Codex wrote all of it, so pretending I’m precious about the source would be kinda weird.
+SleepMode is available under the [MIT License](LICENSE). Codex and Cursor wrote all of it, so being precious about the code would be kinda weird.
